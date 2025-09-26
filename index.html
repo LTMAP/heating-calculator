@@ -736,58 +736,81 @@
         }
 
         // Визуализация укладки
-        function visualizeLayout(roomResult, containerId) {
-            const container = document.getElementById(containerId);
-            container.innerHTML = '';
-            
-            const roomLength = roomResult.length;
-            const roomWidth = roomResult.width;
-            const model = roomResult.model;
-            const sections = roomResult.sectionsNeeded;
-            
-            // Определяем масштаб для визуализации
-            const maxWidth = 400;
-            const maxHeight = 280;
-            const scaleX = maxWidth / roomLength;
-            const scaleY = maxHeight / roomWidth;
-            const scale = Math.min(scaleX, scaleY);
-            
-            // Создаем контур помещения
-            const roomElement = document.createElement('div');
-            roomElement.className = 'room-outline';
-            roomElement.style.width = `${roomLength * scale}px`;
-            roomElement.style.height = `${roomWidth * scale}px`;
-            roomElement.style.left = '50%';
-            roomElement.style.top = '50%';
-            roomElement.style.transform = 'translate(-50%, -50%)';
-            container.appendChild(roomElement);
-            
-            // Расчет оптимального расположения секций
-            const sectionsPerRow = Math.floor(roomLength / model.width);
-            const rows = Math.ceil(sections / sectionsPerRow);
-            
-            // Располагаем секции
-            for (let i = 0; i < sections; i++) {
-                const row = Math.floor(i / sectionsPerRow);
-                const col = i % sectionsPerRow;
-                
-                const sectionElement = document.createElement('div');
-                sectionElement.className = 'section';
-                sectionElement.style.width = `${model.width * scale}px`;
-                sectionElement.style.height = `${model.length * scale}px`;
-                sectionElement.style.left = `${col * model.width * scale}px`;
-                sectionElement.style.top = `${row * model.length * scale}px`;
-                sectionElement.title = `${model.name} (${model.width}м × ${model.length}м)`;
-                
-                // Добавляем номер секции
-                const sectionNumber = document.createElement('div');
-                sectionNumber.textContent = i + 1;
-                sectionElement.appendChild(sectionNumber);
-                
-                roomElement.appendChild(sectionElement);
-            }
-        }
+    function visualizeLayout(roomResult, containerId) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    const roomLength = roomResult.length;
+    const roomWidth = roomResult.width;
+    const model = roomResult.model;
+    const sections = roomResult.sectionsNeeded;
 
+    // Определяем масштаб для визуализации
+    const maxWidth = 400;
+    const maxHeight = 280;
+    const scaleX = maxWidth / roomLength;
+    const scaleY = maxHeight / roomWidth;
+    const scale = Math.min(scaleX, scaleY);
+
+    // Создаем контур помещения
+    const roomElement = document.createElement('div');
+    roomElement.className = 'room-outline';
+    roomElement.style.width = `${roomLength * scale}px`;
+    roomElement.style.height = `${roomWidth * scale}px`;
+    roomElement.style.left = '50%';
+    roomElement.style.top = '50%';
+    roomElement.style.transform = 'translate(-50%, -50%)';
+    roomElement.style.position = 'absolute';
+    container.style.position = 'relative';
+    container.appendChild(roomElement);
+
+    // Рассчитаем, сколько линий (рядов) можно разместить по ширине помещения
+    const linesCount = Math.floor(roomWidth / model.width);
+    if (linesCount < 1) return; // не помещается ни одной линии
+
+    // Сколько целых секций на каждую линию
+    const sectionsPerLine = Math.floor(sections / linesCount);
+    // Сколько осталось секций (которые будут размещены дробными на первых линиях)
+    const remainderSections = sections % linesCount;
+
+    let sectionIndex = 1;
+    for (let line = 0; line < linesCount; line++) {
+        // Определяем для этой линии сколько секций: целые + если есть остаток
+        let thisLineSections = sectionsPerLine + (line < remainderSections ? 1 : 0);
+        // Если эта линия получает "остаточную" секцию — она будет не полной длины
+        let lastSectionIsPartial = (line < remainderSections && thisLineSections > 0);
+
+        // Для каждой секции на линии
+        let offsetX = 0;
+        for (let s = 0; s < thisLineSections; s++) {
+            let sectionLength = model.length;
+            // Если это последняя секция на линии и она должна быть частичной
+            if (lastSectionIsPartial && s === thisLineSections - 1) {
+                // Длина дробной секции
+                const wholeSections = sectionsPerLine;
+                const remainder = sections / linesCount - wholeSections;
+                sectionLength = model.length * remainder; // дробная длина
+                if (sectionLength < 0.01) continue; // если вдруг 0, не рисуем
+            }
+            // Не выходить за пределы помещения
+            if (offsetX + sectionLength > roomLength + 0.01) break;
+
+            const sectionElement = document.createElement('div');
+            sectionElement.className = 'section';
+            sectionElement.style.width = `${model.width * scale}px`;
+            sectionElement.style.height = `${sectionLength * scale}px`;
+            sectionElement.style.left = `${(roomLength - model.length) / 2 * scale + offsetX * scale}px`;
+            sectionElement.style.top = `${line * model.width * scale}px`;
+            sectionElement.title = `${model.name} (${model.width}м × ${sectionLength.toFixed(2)}м)`;
+
+            const sectionNumber = document.createElement('div');
+            sectionNumber.textContent = sectionIndex++;
+            sectionElement.appendChild(sectionNumber);
+
+            roomElement.appendChild(sectionElement);
+            offsetX += sectionLength;
+        }
+    }
+}
         // Расчет для всех помещений
         function calculateAllRooms() {
             const insulation = getSelectedInsulation();
