@@ -585,17 +585,18 @@
             return selected ? selected.getAttribute('data-value') : null;
         }
 
-        // Новый расчет секций по реальной укладке (ряд, секция, дробная секция)
+        // Новый расчет секций с корректной нарезкой: в каждом ряду только целые секции + макс 1 дробная по длине, ширина фиксирована
         function calculateSectionLayout(roomLen, roomWid, model, orient90 = false) {
-            // orient90=false: length = длина секции вдоль длины комнаты, width = ширина секции вдоль ширины
-            // orient90=true: поменять местами
             const rowWidth = orient90 ? model.length : model.width;
             const rowLength = orient90 ? model.width : model.length;
-
             const numRows = Math.floor(roomWid / rowWidth);
             if (numRows < 1) return null;
             const coveredWidth = numRows * rowWidth;
             const offsetY = (roomWid - coveredWidth) / 2;
+
+            const fullSectionsPerRow = Math.floor(roomLen / rowLength);
+            const lastSectionLen = roomLen - fullSectionsPerRow * rowLength;
+            const hasPartial = lastSectionLen >= 0.2;
 
             let allSections = [];
             let totalArea = 0;
@@ -603,11 +604,12 @@
 
             for (let r = 0; r < numRows; r++) {
                 let xRow = 0;
-                let remaining = roomLen;
-
-                while (remaining >= rowLength - 0.0001) {
+                // Целые секции
+                for (let s = 0; s < fullSectionsPerRow; s++) {
                     allSections.push({
-                        n: sectionNumber++,
+                        n: (s+1).toString(),
+                        nrow: r+1,
+                        nrowTotal: fullSectionsPerRow + (hasPartial ? 1 : 0),
                         width: rowWidth,
                         length: rowLength,
                         isPartial: false,
@@ -616,21 +618,22 @@
                         y: offsetY + r * rowWidth
                     });
                     totalArea += rowWidth * rowLength;
-                    remaining -= rowLength;
                     xRow += rowLength;
                 }
-                // Дробная секция в ряду, только если остаток >= 0.2м
-                if (remaining >= 0.2) {
+                // Дробная секция (последняя в ряду)
+                if (hasPartial) {
                     allSections.push({
-                        n: sectionNumber++,
+                        n: (fullSectionsPerRow+1) + "/" + (fullSectionsPerRow+(hasPartial?1:0)),
+                        nrow: r+1,
+                        nrowTotal: fullSectionsPerRow + 1,
                         width: rowWidth,
-                        length: remaining,
+                        length: lastSectionLen,
                         isPartial: true,
                         row: r,
                         x: xRow,
                         y: offsetY + r * rowWidth
                     });
-                    totalArea += rowWidth * remaining;
+                    totalArea += rowWidth * lastSectionLen;
                 }
             }
             return {
@@ -646,11 +649,9 @@
 
         function checkFit(model, layout, roomLen, roomWid, minCoverage = 0.85) {
             if (!layout) return false;
-            // Мощность
             const maxPower = 3360;
             const totalPower = layout.sections.length * model.power;
             if (totalPower > maxPower) return false;
-            // Покрытие
             const totalArea = roomLen * roomWid;
             const coverage = layout.area / totalArea;
             if (coverage < minCoverage) return false;
@@ -727,8 +728,6 @@
             const roomLength = roomResult.length;
             const roomWidth = roomResult.width;
             const layout = roomResult.layout;
-            const model = roomResult.model;
-            const orient90 = roomResult.orient90;
 
             const maxWidth = 400;
             const maxHeight = 280;
@@ -736,11 +735,7 @@
             const scaleY = maxHeight / roomWidth;
             const scale = Math.min(scaleX, scaleY);
 
-            // Центрирование по ширине
-            const usedWidth = layout.numRows * layout.rowWidth;
-            const offsetY = ((roomWidth - usedWidth) / 2) * scaleY;
-
-            // Контур помещения
+            // Центрирование по ширине (offsetY учитывается в .y)
             const roomElement = document.createElement('div');
             roomElement.className = 'room-outline';
             roomElement.style.width = `${roomLength * scale}px`;
@@ -760,7 +755,9 @@
                 sectionDiv.style.height = `${se.width * scale}px`;
                 sectionDiv.style.left = `${se.x * scale}px`;
                 sectionDiv.style.top = `${(se.y) * scaleY}px`;
-                sectionDiv.innerHTML = `<div class="sec-label">${se.n}</div>
+
+                // Метка: если дробная — номер/всего, иначе просто номер
+                sectionDiv.innerHTML = `<div class="sec-label">${se.isPartial ? se.n : se.n}</div>
                     <div class="sec-size">${se.length.toFixed(2)}×${se.width.toFixed(2)}м</div>`;
                 roomElement.appendChild(sectionDiv);
             });
