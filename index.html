@@ -585,9 +585,30 @@
             return selected ? selected.getAttribute('data-value') : null;
         }
 
-        function checkFit(model, roomLength, roomWidth, sectionsNeeded) {
+        // Новый расчет секций с учетом дробной последней секции, делящейся на все ряды
+        function calculateSectionLayout(roomLength, roomWidth, model) {
+            const linesCount = Math.floor(roomWidth / model.width);
+            const fullSectionsPerLine = Math.floor(roomLength / model.length);
+            const lastSectionLength = roomLength - fullSectionsPerLine * model.length;
+            let totalSections = linesCount * fullSectionsPerLine;
+            let partialSectionArea = 0;
+            if (lastSectionLength > 0.01) {
+                partialSectionArea = linesCount * lastSectionLength * model.width;
+                totalSections += partialSectionArea / (model.length * model.width);
+            }
+            return {
+                linesCount,
+                fullSectionsPerLine,
+                lastSectionLength,
+                totalSections: Math.round(totalSections * 100) / 100,
+                partialSectionArea
+            };
+        }
+
+        function checkFit(model, roomLength, roomWidth, layout) {
             const maxPower = 3360;
-            const totalPower = sectionsNeeded * model.power;
+            const totalSections = layout.totalSections;
+            const totalPower = totalSections * model.power;
             if (totalPower > maxPower) {
                 return { fits: false, reason: `Превышена мощность (${totalPower} Вт > ${maxPower} Вт)` };
             }
@@ -598,42 +619,54 @@
             return { fits: true, totalPower };
         }
 
+        // Новый расчет для одного помещения с учетом дробной секции
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
             const targetArea = totalArea * 0.9;
             const minArea = totalArea * 0.85;
             const maxArea = totalArea * 1.00;
+
             const suitableModels = models.filter(model => {
                 if (insulation === 'low' && model.powerM2 >= 200) return true;
                 if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
                 if (insulation === 'high' && model.powerM2 >= 140 && model.powerM2 <= 180) return true;
                 return false;
             }).sort((a, b) => b.powerM2 - a.powerM2);
+
             let optimalModel = null;
-            let optimalSections = 0;
+            let optimalLayout = null;
+            let coverage = 0;
             let coveragePercentage = 0;
-            let closestToTarget = Infinity;
+            let deviationFromTarget = Infinity;
+
             for (const model of suitableModels) {
-                const minSections = Math.ceil(minArea / model.area);
-                const maxSections = Math.floor(maxArea / model.area);
-                for (let sections = minSections; sections <= maxSections; sections++) {
-                    const coverage = sections * model.area;
-                    const fitCheck = checkFit(model, length, width, sections);
-                    if (fitCheck.fits) {
-                        const currentCoveragePercentage = (coverage / totalArea) * 100;
-                        const deviationFromTarget = Math.abs(currentCoveragePercentage - 90);
-                        if (deviationFromTarget < closestToTarget) {
-                            closestToTarget = deviationFromTarget;
-                            optimalModel = model;
-                            optimalSections = sections;
-                            coveragePercentage = currentCoveragePercentage;
-                        }
-                    }
+                const layout = calculateSectionLayout(length, width, model);
+
+                // Считаем фактическое покрытие (площадь всех секций)
+                let actualCoverage = layout.linesCount * layout.fullSectionsPerLine * model.area;
+                if (layout.lastSectionLength > 0.01) {
+                    actualCoverage += layout.linesCount * layout.lastSectionLength * model.width;
+                }
+                const fitCheck = checkFit(model, length, width, layout);
+                if (!fitCheck.fits) continue;
+
+                const currentCoveragePercentage = (actualCoverage / totalArea) * 100;
+                const deviation = Math.abs(currentCoveragePercentage - 90);
+                if (deviation < deviationFromTarget && actualCoverage >= minArea && actualCoverage <= maxArea) {
+                    deviationFromTarget = deviation;
+                    optimalModel = model;
+                    optimalLayout = layout;
+                    coverage = actualCoverage;
+                    coveragePercentage = currentCoveragePercentage;
                 }
             }
-            if (optimalModel) {
-                const coverage = optimalSections * optimalModel.area;
-                const totalPower = optimalSections * optimalModel.power;
+
+            if (optimalModel && optimalLayout) {
+                const totalSections = optimalLayout.linesCount * optimalLayout.fullSectionsPerLine +
+                    (optimalLayout.lastSectionLength > 0.01 ? optimalLayout.linesCount : 0);
+                const totalPower = optimalLayout.totalSections * optimalModel.power;
+
+                // Стоимости и остальное как раньше
                 const thermostatCount = Math.max(1, Math.ceil(coverage / 20));
                 const thermostatPrice = 5000;
                 const thermostatTotal = thermostatPrice * thermostatCount;
@@ -641,6 +674,7 @@
                 const floorPrice = coverage * 3000;
                 const totalCost = installPrice + floorPrice + thermostatTotal;
                 const powerUsage = totalArea * 20;
+
                 return {
                     roomId,
                     roomName,
@@ -648,7 +682,7 @@
                     width,
                     totalArea,
                     model: optimalModel,
-                    sectionsNeeded: optimalSections,
+                    layout: optimalLayout,
                     coverage,
                     totalPower,
                     coveragePercentage,
@@ -659,9 +693,14 @@
                     installPrice,
                     floorPrice,
                     totalCost,
+                    sectionsNeeded: optimalLayout.totalSections,
+                    fullSectionsPerLine: optimalLayout.fullSectionsPerLine,
+                    lastSectionLength: optimalLayout.lastSectionLength,
+                    linesCount: optimalLayout.linesCount,
                     success: true
                 };
             }
+
             return {
                 roomId,
                 roomName,
@@ -672,14 +711,14 @@
             };
         }
 
-        // Главная часть! Визуализация секций по рядам (горизонтально вдоль длины комнаты)
         function visualizeLayout(roomResult, containerId) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
             const roomLength = roomResult.length;
             const roomWidth = roomResult.width;
             const model = roomResult.model;
-            const totalSections = roomResult.sectionsNeeded;
+            const layout = roomResult.layout;
+            if (!layout) return;
             const maxWidth = 400;
             const maxHeight = 280;
             const scaleX = maxWidth / roomLength;
@@ -698,24 +737,17 @@
             container.style.position = 'relative';
             container.appendChild(roomElement);
 
-            // Линий (рядов) по ширине комнаты
-            const linesCount = Math.floor(roomWidth / model.width);
-            if (linesCount < 1) return;
-            const sectionsPerLineFloat = totalSections / linesCount;
             let sectionIndex = 1;
 
-            for (let line = 0; line < linesCount; line++) {
+            for (let line = 0; line < layout.linesCount; line++) {
                 let offsetX = 0;
-                const fullSections = Math.floor(sectionsPerLineFloat);
-                const partialSectionLength = model.length * (sectionsPerLineFloat - fullSections);
-
-                // Полные секции (горизонтально вдоль длины!)
-                for (let s = 0; s < fullSections; s++) {
+                // Полные секции
+                for (let s = 0; s < layout.fullSectionsPerLine; s++) {
                     if (offsetX + model.length > roomLength + 0.01) break;
                     const sectionElement = document.createElement('div');
                     sectionElement.className = 'section';
-                    sectionElement.style.width = `${model.length * scale}px`;   // длина секции по X!
-                    sectionElement.style.height = `${model.width * scale}px`;   // ширина секции по Y!
+                    sectionElement.style.width = `${model.length * scale}px`;
+                    sectionElement.style.height = `${model.width * scale}px`;
                     sectionElement.style.left = `${offsetX * scale}px`;
                     sectionElement.style.top = `${line * model.width * scale}px`;
                     sectionElement.title = `${model.name} (${model.width}м × ${model.length}м)`;
@@ -725,15 +757,15 @@
                     roomElement.appendChild(sectionElement);
                     offsetX += model.length;
                 }
-                // Дробная секция (в конце ряда)
-                if (partialSectionLength > 0.01 && offsetX + partialSectionLength <= roomLength + 0.01) {
+                // Дробная секция (если есть остаток)
+                if (layout.lastSectionLength > 0.01 && offsetX < roomLength) {
                     const sectionElement = document.createElement('div');
                     sectionElement.className = 'section';
-                    sectionElement.style.width = `${partialSectionLength * scale}px`; // длина дробной секции по X!
+                    sectionElement.style.width = `${layout.lastSectionLength * scale}px`;
                     sectionElement.style.height = `${model.width * scale}px`;
                     sectionElement.style.left = `${offsetX * scale}px`;
                     sectionElement.style.top = `${line * model.width * scale}px`;
-                    sectionElement.title = `${model.name} (${model.width}м × ${partialSectionLength.toFixed(2)}м)`;
+                    sectionElement.title = `${model.name} (${model.width}м × ${layout.lastSectionLength.toFixed(2)}м)`;
                     const sectionNumber = document.createElement('div');
                     sectionNumber.textContent = sectionIndex++;
                     sectionElement.appendChild(sectionNumber);
@@ -804,7 +836,7 @@
                                 <div class="result-grid">
                                     <div class="result-item"><strong>Мощность на м²:</strong> ${room.model.powerM2} Вт/м²</div>
                                     <div class="result-item"><strong>Мощность секции:</strong> ${room.model.power} Вт</div>
-                                    <div class="result-item"><strong>Секций требуется:</strong> ${room.sectionsNeeded} шт.</div>
+                                    <div class="result-item"><strong>Секций требуется:</strong> ${room.sectionsNeeded}</div>
                                     <div class="result-item"><strong>Покрываемая площадь:</strong> ${room.coverage.toFixed(2)} м²</div>
                                     <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower} Вт</div>
                                     <div class="result-item"><strong>Размер секции:</strong> ${room.model.width}м × ${room.model.length}м</div>
