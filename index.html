@@ -222,6 +222,16 @@
             border-left: 4px solid #ffc107;
         }
         
+        .coverage-info {
+            background: #e8f4f8;
+            color: #2c3e50;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-size: 14px;
+            text-align: center;
+        }
+        
         footer {
             text-align: center;
             padding: 20px;
@@ -294,7 +304,8 @@
                 </div>
                 <div class="area-info">
                     <p>Общая площадь: <span id="total-area">14.4</span> м²</p>
-                    <p>Полезная площадь (90%): <span id="effective-area">12.96</span> м²</p>
+                    <p>Целевая площадь (90%): <span id="effective-area">12.96</span> м²</p>
+                    <p style="font-size: 14px; color: #666;">Диапазон подбора: 85-100% от общей площади</p>
                 </div>
             </div>
             
@@ -382,20 +393,30 @@
                 return { fits: false, reason: `Превышена мощность (${totalPower} Вт > ${maxPower} Вт)` };
             }
             
+            const minRoomDimension = Math.min(roomLength, roomWidth);
+            if (model.width > minRoomDimension && model.length > minRoomDimension) {
+                return { fits: false, reason: `Мат слишком большой для помещения` };
+            }
+            
             return { fits: true, totalPower };
         }
 
-        // Основной расчет
+        // Основной расчет с расширенным диапазоном площадей
         function calculate() {
             const insulation = getSelectedValue('insulation-options');
             const roomLength = parseFloat(document.getElementById('room-length').value);
             const roomWidth = parseFloat(document.getElementById('room-width').value);
-            const usableArea = (roomLength * roomWidth) * 0.9;
+            const totalArea = roomLength * roomWidth;
             
             if (!roomLength || !roomWidth) {
                 showError('Введите размеры помещения');
                 return;
             }
+            
+            // Целевая площадь и диапазон подбора
+            const targetArea = totalArea * 0.9; // 90% - идеал
+            const minArea = totalArea * 0.85;   // 85% - минимум
+            const maxArea = totalArea * 1.00;   // 100% - максимум
             
             // Фильтрация моделей по утеплению
             const suitableModels = models.filter(model => {
@@ -405,24 +426,51 @@
                 return false;
             }).sort((a, b) => b.powerM2 - a.powerM2);
             
-            // Поиск оптимальной модели
+            // Поиск оптимальной модели в диапазоне 85-100%
             let optimalModel = null;
+            let optimalSections = 0;
+            let coveragePercentage = 0;
+            let closestToTarget = Infinity;
+            
             for (const model of suitableModels) {
-                const sectionsNeeded = Math.ceil(usableArea / model.area);
-                const fitCheck = checkFit(model, roomLength, roomWidth, sectionsNeeded);
+                // Рассчитываем возможное количество секций
+                const minSections = Math.ceil(minArea / model.area);
+                const maxSections = Math.floor(maxArea / model.area);
                 
-                if (fitCheck.fits) {
-                    optimalModel = { 
-                        model, 
-                        sectionsNeeded, 
-                        coverage: sectionsNeeded * model.area, 
-                        totalPower: fitCheck.totalPower 
-                    };
-                    break; // Нашли оптимальную модель - выходим из цикла
+                // Перебираем возможное количество секций
+                for (let sections = minSections; sections <= maxSections; sections++) {
+                    const coverage = sections * model.area;
+                    const fitCheck = checkFit(model, roomLength, roomWidth, sections);
+                    
+                    if (fitCheck.fits) {
+                        const currentCoveragePercentage = (coverage / totalArea) * 100;
+                        const deviationFromTarget = Math.abs(currentCoveragePercentage - 90);
+                        
+                        // Ищем модель с покрытием, наиболее близким к 90%
+                        if (deviationFromTarget < closestToTarget) {
+                            closestToTarget = deviationFromTarget;
+                            optimalModel = model;
+                            optimalSections = sections;
+                            coveragePercentage = currentCoveragePercentage;
+                        }
+                    }
                 }
             }
             
-            displayResult(optimalModel, roomLength, roomWidth, usableArea, insulation);
+            if (optimalModel) {
+                const coverage = optimalSections * optimalModel.area;
+                const totalPower = optimalSections * optimalModel.power;
+                
+                displayResult({
+                    model: optimalModel,
+                    sectionsNeeded: optimalSections,
+                    coverage: coverage,
+                    totalPower: totalPower,
+                    coveragePercentage: coveragePercentage
+                }, roomLength, roomWidth, totalArea, insulation);
+            } else {
+                showError('Не найдено подходящей модели для выбранного уровня утепления. Попробуйте изменить критерии.');
+            }
         }
 
         // Показать ошибку
@@ -431,14 +479,9 @@
             container.innerHTML = `<div class="warning">${message}</div>`;
         }
 
-        // Отображение результата (только одной модели)
-        function displayResult(result, roomLength, roomWidth, usableArea, insulation) {
+        // Отображение результата
+        function displayResult(result, roomLength, roomWidth, totalArea, insulation) {
             const container = document.getElementById('results-container');
-            
-            if (!result) {
-                showError('Не найдено подходящей модели для выбранного уровня утепления. Попробуйте изменить критерии.');
-                return;
-            }
             
             // Определяем текст для уровня утепления
             let insulationText = '';
@@ -449,9 +492,18 @@
             }
             
             const model = result.model;
+            let coverageInfo = '';
+            
+            // Информация о покрытии
+            if (result.coveragePercentage >= 89 && result.coveragePercentage <= 91) {
+                coverageInfo = `<div class="coverage-info">Точное соответствие целевой площади (90%)</div>`;
+            } else {
+                coverageInfo = `<div class="coverage-info">Покрытие: ${result.coveragePercentage.toFixed(1)}% от общей площади (диапазон подбора: 85-100%)</div>`;
+            }
             
             const html = `
                 <div class="step-title">Рекомендация для помещения ${roomLength}м × ${roomWidth}м (${insulationText})</div>
+                ${coverageInfo}
                 <div class="result-card">
                     <h4>ОПТИМАЛЬНАЯ МОДЕЛЬ: ${model.name}</h4>
                     <div class="result-grid">
