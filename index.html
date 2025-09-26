@@ -263,18 +263,23 @@
             <div class="step">
                 <div class="step-title">
                     <span class="step-number">1</span>
-                    Назначение отопления
+                    Оцените утепление помещения
                 </div>
-                <div class="options-grid" id="purpose-options">
-                    <div class="option-card selected" data-value="main">
-                        <h3>Основное отопление</h3>
-                        <p>Помещение без постоянного обогрева</p>
-                        <div class="power-info">Модели от 140 Вт/м²</div>
+                <div class="options-grid" id="insulation-options">
+                    <div class="option-card selected" data-value="low">
+                        <h3>Низкое утепление</h3>
+                        <p>Балкон, лоджия, старый дом</p>
+                        <div class="power-info">Рекомендуемая мощность: от 200 Вт/м²</div>
                     </div>
-                    <div class="option-card" data-value="additional">
-                        <h3>Дополнительное отопление</h3>
-                        <p>Комфортный подогрев</p>
-                        <div class="power-info">Модели до 140 Вт/м²</div>
+                    <div class="option-card" data-value="medium">
+                        <h3>Среднее утепление</h3>
+                        <p>Городская квартира</p>
+                        <div class="power-info">Рекомендуемая мощность: 180-200 Вт/м²</div>
+                    </div>
+                    <div class="option-card" data-value="high">
+                        <h3>Высокое утепление</h3>
+                        <p>Новостройка, утепленный дом</p>
+                        <div class="power-info">Рекомендуемая мощность: 140-180 Вт/м²</div>
                     </div>
                 </div>
             </div>
@@ -282,30 +287,6 @@
             <div class="step">
                 <div class="step-title">
                     <span class="step-number">2</span>
-                    Утепление помещения
-                </div>
-                <div class="options-grid" id="insulation-options">
-                    <div class="option-card selected" data-value="low">
-                        <h3>Низкое</h3>
-                        <p>Балкон, лоджия, старый дом</p>
-                        <div class="power-info">Модели от 200 Вт/м²</div>
-                    </div>
-                    <div class="option-card" data-value="medium">
-                        <h3>Среднее</h3>
-                        <p>Городская квартира</p>
-                        <div class="power-info">Модели 180-200 Вт/м²</div>
-                    </div>
-                    <div class="option-card" data-value="high">
-                        <h3>Высокое</h3>
-                        <p>Новостройка, утепленный дом</p>
-                        <div class="power-info">Модели 140-180 Вт/м²</div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="step">
-                <div class="step-title">
-                    <span class="step-number">3</span>
                     Размеры помещения
                 </div>
                 <div class="dimensions-input">
@@ -358,7 +339,6 @@
         // Инициализация
         document.addEventListener('DOMContentLoaded', function() {
             // Настройка выбора опций
-            setupOptionSelection('purpose-options');
             setupOptionSelection('insulation-options');
             
             // Обновление площади
@@ -414,7 +394,6 @@
 
         // Основной расчет
         function calculate() {
-            const purpose = getSelectedValue('purpose-options');
             const insulation = getSelectedValue('insulation-options');
             const roomLength = parseFloat(document.getElementById('room-length').value);
             const roomWidth = parseFloat(document.getElementById('room-width').value);
@@ -425,30 +404,33 @@
                 return;
             }
             
-            // Фильтрация моделей
+            // Фильтрация моделей по утеплению
             const suitableModels = models.filter(model => {
-                if (purpose === 'main' && model.powerM2 < 140) return false;
-                if (purpose === 'additional' && model.powerM2 >= 140) return false;
-                if (insulation === 'low' && model.powerM2 < 200) return false;
-                if (insulation === 'medium' && (model.powerM2 < 180 || model.powerM2 > 200)) return false;
-                if (insulation === 'high' && (model.powerM2 < 140 || model.powerM2 > 180)) return false;
-                return true;
+                if (insulation === 'low' && model.powerM2 >= 200) return true;
+                if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
+                if (insulation === 'high' && model.powerM2 >= 140 && model.powerM2 <= 180) return true;
+                return false;
             }).sort((a, b) => b.powerM2 - a.powerM2);
             
-            // Поиск подходящих
+            // Поиск подходящих моделей
             const results = [];
             for (const model of suitableModels) {
                 const sectionsNeeded = Math.ceil(usableArea / model.area);
                 const fitCheck = checkFit(model, roomLength, roomWidth, sectionsNeeded);
                 
                 if (fitCheck.fits) {
-                    results.push({ model, sectionsNeeded, coverage: sectionsNeeded * model.area, totalPower: fitCheck.totalPower });
+                    results.push({ 
+                        model, 
+                        sectionsNeeded, 
+                        coverage: sectionsNeeded * model.area, 
+                        totalPower: fitCheck.totalPower 
+                    });
                 }
                 
                 if (results.length >= 3) break;
             }
             
-            displayResults(results, roomLength, roomWidth, usableArea);
+            displayResults(results, roomLength, roomWidth, usableArea, insulation);
         }
 
         // Показать ошибку
@@ -458,15 +440,23 @@
         }
 
         // Отображение результатов
-        function displayResults(results, roomLength, roomWidth, usableArea) {
+        function displayResults(results, roomLength, roomWidth, usableArea, insulation) {
             const container = document.getElementById('results-container');
             
             if (results.length === 0) {
-                showError('Не найдено подходящих моделей. Измените критерии.');
+                showError('Не найдено подходящих моделей для выбранного уровня утепления. Попробуйте изменить критерии.');
                 return;
             }
             
-            let html = `<div class="step-title">Результаты для помещения ${roomLength}м × ${roomWidth}м</div>`;
+            // Определяем текст для уровня утепления
+            let insulationText = '';
+            switch(insulation) {
+                case 'low': insulationText = 'низкому утеплению'; break;
+                case 'medium': insulationText = 'среднему утеплению'; break;
+                case 'high': insulationText = 'высокому утеплению'; break;
+            }
+            
+            let html = `<div class="step-title">Результаты для помещения ${roomLength}м × ${roomWidth}м (${insulationText})</div>`;
             
             results.forEach((result, index) => {
                 const isOptimal = index === 0;
