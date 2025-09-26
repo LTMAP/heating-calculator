@@ -173,27 +173,18 @@
         }
         
         .result-card {
-            border: 2px solid #e0e0e0;
+            border: 2px solid #27ae60;
             border-radius: 8px;
             padding: 25px;
             margin: 20px 0;
-            background: white;
-        }
-        
-        .result-card.optimal {
-            border-color: #27ae60;
             background-color: #f0fff4;
         }
         
-        .result-card.alternative {
-            border-color: #f39c12;
-            background-color: #fef9e7;
-        }
-        
         .result-card h4 {
-            font-size: 20px;
-            margin-bottom: 15px;
+            font-size: 22px;
+            margin-bottom: 20px;
             color: #2c3e50;
+            text-align: center;
         }
         
         .result-grid {
@@ -205,6 +196,8 @@
         
         .result-item {
             padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
         }
         
         .result-item strong {
@@ -412,25 +405,24 @@
                 return false;
             }).sort((a, b) => b.powerM2 - a.powerM2);
             
-            // Поиск подходящих моделей
-            const results = [];
+            // Поиск оптимальной модели
+            let optimalModel = null;
             for (const model of suitableModels) {
                 const sectionsNeeded = Math.ceil(usableArea / model.area);
                 const fitCheck = checkFit(model, roomLength, roomWidth, sectionsNeeded);
                 
                 if (fitCheck.fits) {
-                    results.push({ 
+                    optimalModel = { 
                         model, 
                         sectionsNeeded, 
                         coverage: sectionsNeeded * model.area, 
                         totalPower: fitCheck.totalPower 
-                    });
+                    };
+                    break; // Нашли оптимальную модель - выходим из цикла
                 }
-                
-                if (results.length >= 3) break;
             }
             
-            displayResults(results, roomLength, roomWidth, usableArea, insulation);
+            displayResult(optimalModel, roomLength, roomWidth, usableArea, insulation);
         }
 
         // Показать ошибку
@@ -439,12 +431,12 @@
             container.innerHTML = `<div class="warning">${message}</div>`;
         }
 
-        // Отображение результатов
-        function displayResults(results, roomLength, roomWidth, usableArea, insulation) {
+        // Отображение результата (только одной модели)
+        function displayResult(result, roomLength, roomWidth, usableArea, insulation) {
             const container = document.getElementById('results-container');
             
-            if (results.length === 0) {
-                showError('Не найдено подходящих моделей для выбранного уровня утепления. Попробуйте изменить критерии.');
+            if (!result) {
+                showError('Не найдено подходящей модели для выбранного уровня утепления. Попробуйте изменить критерии.');
                 return;
             }
             
@@ -456,28 +448,24 @@
                 case 'high': insulationText = 'высокому утеплению'; break;
             }
             
-            let html = `<div class="step-title">Результаты для помещения ${roomLength}м × ${roomWidth}м (${insulationText})</div>`;
+            const model = result.model;
             
-            results.forEach((result, index) => {
-                const isOptimal = index === 0;
-                const model = result.model;
-                
-                html += `
-                    <div class="result-card ${isOptimal ? 'optimal' : 'alternative'}">
-                        <h4>${isOptimal ? '🚀 ОПТИМАЛЬНЫЙ ВАРИАНТ' : '💡 АЛЬТЕРНАТИВА'}: ${model.name}</h4>
-                        <div class="result-grid">
-                            <div class="result-item"><strong>Мощность на м²:</strong> ${model.powerM2} Вт/м²</div>
-                            <div class="result-item"><strong>Мощность секции:</strong> ${model.power} Вт</div>
-                            <div class="result-item"><strong>Секций требуется:</strong> ${result.sectionsNeeded} шт.</div>
-                            <div class="result-item"><strong>Покрываемая площадь:</strong> ${result.coverage.toFixed(2)} м²</div>
-                            <div class="result-item"><strong>Общая мощность:</strong> ${result.totalPower} Вт</div>
-                            <div class="result-item"><strong>Размер секции:</strong> ${model.width}м × ${model.length}м</div>
-                        </div>
-                        ${result.totalPower > 2500 ? 
-                            `<div class="power-warning">⚠️ Мощность близка к предельной. Убедитесь в надежности электропроводки.</div>` : ''}
+            const html = `
+                <div class="step-title">Рекомендация для помещения ${roomLength}м × ${roomWidth}м (${insulationText})</div>
+                <div class="result-card">
+                    <h4>ОПТИМАЛЬНАЯ МОДЕЛЬ: ${model.name}</h4>
+                    <div class="result-grid">
+                        <div class="result-item"><strong>Мощность на м²:</strong> ${model.powerM2} Вт/м²</div>
+                        <div class="result-item"><strong>Мощность секции:</strong> ${model.power} Вт</div>
+                        <div class="result-item"><strong>Секций требуется:</strong> ${result.sectionsNeeded} шт.</div>
+                        <div class="result-item"><strong>Покрываемая площадь:</strong> ${result.coverage.toFixed(2)} м²</div>
+                        <div class="result-item"><strong>Общая мощность:</strong> ${result.totalPower} Вт</div>
+                        <div class="result-item"><strong>Размер секции:</strong> ${model.width}м × ${model.length}м</div>
                     </div>
-                `;
-            });
+                    ${result.totalPower > 2500 ? 
+                        `<div class="power-warning">Внимание: Мощность близка к предельной. Убедитесь в надежности электропроводки.</div>` : ''}
+                </div>
+            `;
             
             container.innerHTML = html;
         }
