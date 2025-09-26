@@ -585,51 +585,80 @@
             return selected ? selected.getAttribute('data-value') : null;
         }
 
-        // Новый расчет секций с укладкой "рулоном"
+        // Новый расчет секций по реальной укладке (ряд, секция, дробная секция)
         function calculateSectionLayout(roomLen, roomWid, model, orient90 = false) {
-            // orient90=false: length вдоль длины комнаты, width вдоль ширины
-            // orient90=true: width вдоль длины комнаты, length вдоль ширины
-            const L = orient90 ? roomWid : roomLen;
-            const W = orient90 ? roomLen : roomWid;
-            const l = orient90 ? model.width : model.length;   // секция вдоль полосы
-            const w = orient90 ? model.length : model.width;   // ширина полосы
+            // orient90=false: length = длина секции вдоль длины комнаты, width = ширина секции вдоль ширины
+            // orient90=true: поменять местами
+            const rowWidth = orient90 ? model.length : model.width;
+            const rowLength = orient90 ? model.width : model.length;
 
-            const rows = Math.floor(W / w); // число полос
-            const fullSectionsPerRow = Math.floor(L / l);
-            const lastSectionLen = L - fullSectionsPerRow * l;
-            // Минимальная длина дробной секции
-            const hasPartial = lastSectionLen >= 0.2;
-            // Итоговое покрытие
-            let coverage = rows * fullSectionsPerRow * l * w + (hasPartial ? rows * lastSectionLen * w : 0);
-            let totalSections = rows * fullSectionsPerRow + (hasPartial ? 1 : 0);
+            const numRows = Math.floor(roomWid / rowWidth);
+            if (numRows < 1) return null;
+            const coveredWidth = numRows * rowWidth;
+            const offsetY = (roomWid - coveredWidth) / 2;
 
+            let allSections = [];
+            let totalArea = 0;
+            let sectionNumber = 1;
+
+            for (let r = 0; r < numRows; r++) {
+                let xRow = 0;
+                let remaining = roomLen;
+
+                while (remaining >= rowLength - 0.0001) {
+                    allSections.push({
+                        n: sectionNumber++,
+                        width: rowWidth,
+                        length: rowLength,
+                        isPartial: false,
+                        row: r,
+                        x: xRow,
+                        y: offsetY + r * rowWidth
+                    });
+                    totalArea += rowWidth * rowLength;
+                    remaining -= rowLength;
+                    xRow += rowLength;
+                }
+                // Дробная секция в ряду, только если остаток >= 0.2м
+                if (remaining >= 0.2) {
+                    allSections.push({
+                        n: sectionNumber++,
+                        width: rowWidth,
+                        length: remaining,
+                        isPartial: true,
+                        row: r,
+                        x: xRow,
+                        y: offsetY + r * rowWidth
+                    });
+                    totalArea += rowWidth * remaining;
+                }
+            }
             return {
-                rows,
-                fullSectionsPerRow,
-                lastSectionLen: hasPartial ? lastSectionLen : 0,
-                totalSections,
-                coverage,
-                orient90,
-                l, w, L, W
+                numRows,
+                rowWidth,
+                rowLength,
+                offsetY,
+                sections: allSections,
+                area: totalArea,
+                orient90
             };
         }
 
-        function checkFit(model, layout, totalArea) {
+        function checkFit(model, layout, roomLen, roomWid, minCoverage = 0.85) {
+            if (!layout) return false;
+            // Мощность
             const maxPower = 3360;
-            const totalSections = layout.totalSections;
-            const totalPower = totalSections * model.power;
-            if (layout.rows < 1 || layout.fullSectionsPerRow < 1) return { fits: false, reason: "Секция не помещается" };
-            if (totalPower > maxPower) {
-                return { fits: false, reason: `Превышена мощность (${totalPower} Вт > ${maxPower} Вт)` };
-            }
-            if ((layout.coverage / totalArea) < 0.85) return { fits: false, reason: `Покрытие менее 85%` };
-            return { fits: true, totalPower };
+            const totalPower = layout.sections.length * model.power;
+            if (totalPower > maxPower) return false;
+            // Покрытие
+            const totalArea = roomLen * roomWid;
+            const coverage = layout.area / totalArea;
+            if (coverage < minCoverage) return false;
+            return true;
         }
 
-        // Расчет с подбором ориентации и логикой "рулона"
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
-
             const suitableModels = models.filter(model => {
                 if (insulation === 'low' && model.powerM2 >= 200) return true;
                 if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
@@ -637,69 +666,35 @@
                 return false;
             }).sort((a, b) => b.powerM2 - a.powerM2);
 
-            let optimalModel = null;
-            let optimalLayout = null;
-            let coverage = 0;
-            let coveragePercentage = 0;
-            let deviationFromTarget = Infinity;
+            let best = null;
+            let bestModel = null;
+            let bestCoverage = 0;
+            let bestOrient90 = false;
 
             for (const model of suitableModels) {
                 for (let orient90 = 0; orient90 <= 1; orient90++) {
                     const layout = calculateSectionLayout(length, width, model, !!orient90);
-
-                    const fitCheck = checkFit(model, layout, totalArea);
-                    if (!fitCheck.fits) continue;
-
-                    const currentCoveragePercentage = (layout.coverage / totalArea) * 100;
-                    const deviation = Math.abs(currentCoveragePercentage - 90);
-                    if (deviation < deviationFromTarget) {
-                        deviationFromTarget = deviation;
-                        optimalModel = model;
-                        optimalLayout = layout;
-                        coverage = layout.coverage;
-                        coveragePercentage = currentCoveragePercentage;
+                    if (!checkFit(model, layout, length, width)) continue;
+                    const coverage = (layout.area / totalArea) * 100;
+                    const d = Math.abs(coverage - 90);
+                    if (!best || d < Math.abs(bestCoverage - 90)) {
+                        best = layout;
+                        bestModel = model;
+                        bestCoverage = coverage;
+                        bestOrient90 = !!orient90;
                     }
                 }
             }
+            if (!best) return { roomId, roomName, length, width, totalArea, success: false };
 
-            if (optimalModel && optimalLayout) {
-                const totalPower = optimalLayout.totalSections * optimalModel.power;
-                const thermostatCount = Math.max(1, Math.ceil(coverage / 20));
-                const thermostatPrice = 5000;
-                const thermostatTotal = thermostatPrice * thermostatCount;
-                const installPrice = coverage * 1000 + thermostatCount * 3000;
-                const floorPrice = coverage * 3000;
-                const totalCost = installPrice + floorPrice + thermostatTotal;
-
-                return {
-                    roomId,
-                    roomName,
-                    length,
-                    width,
-                    totalArea,
-                    model: optimalModel,
-                    layout: optimalLayout,
-                    coverage,
-                    totalPower,
-                    coveragePercentage,
-                    thermostatCount,
-                    thermostatPrice,
-                    thermostatTotal,
-                    installPrice,
-                    floorPrice,
-                    totalCost,
-                    sectionsNeeded: optimalLayout.totalSections,
-                    fullSectionsPerRow: optimalLayout.fullSectionsPerRow,
-                    lastSectionLength: optimalLayout.lastSectionLen,
-                    rows: optimalLayout.rows,
-                    orient90: optimalLayout.orient90,
-                    l: optimalLayout.l,
-                    w: optimalLayout.w,
-                    L: optimalLayout.L,
-                    W: optimalLayout.W,
-                    success: true
-                };
-            }
+            // Итоговые данные
+            const totalPower = best.sections.length * bestModel.power;
+            const thermostatCount = Math.max(1, Math.ceil(best.area / 20));
+            const thermostatPrice = 5000;
+            const thermostatTotal = thermostatPrice * thermostatCount;
+            const installPrice = best.area * 1000 + thermostatCount * 3000;
+            const floorPrice = best.area * 3000;
+            const totalCost = installPrice + floorPrice + thermostatTotal;
 
             return {
                 roomId,
@@ -707,11 +702,23 @@
                 length,
                 width,
                 totalArea,
-                success: false
+                model: bestModel,
+                layout: best,
+                coverage: best.area,
+                coveragePercentage: bestCoverage,
+                totalPower,
+                thermostatCount,
+                thermostatPrice,
+                thermostatTotal,
+                installPrice,
+                floorPrice,
+                totalCost,
+                sectionsNeeded: best.sections.length,
+                orient90: bestOrient90,
+                success: true
             };
         }
 
-        // Визуализация "рулонной" укладки с централизованием и правильной нумерацией
         function visualizeLayout(roomResult, containerId) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -720,10 +727,8 @@
             const roomLength = roomResult.length;
             const roomWidth = roomResult.width;
             const layout = roomResult.layout;
-            const orient90 = roomResult.orient90 || false;
-            const l = layout.l, w = layout.w;
-            const rows = layout.rows, fullSectionsPerRow = layout.fullSectionsPerRow;
-            const hasPartial = layout.lastSectionLen > 0.01;
+            const model = roomResult.model;
+            const orient90 = roomResult.orient90;
 
             const maxWidth = 400;
             const maxHeight = 280;
@@ -731,17 +736,9 @@
             const scaleY = maxHeight / roomWidth;
             const scale = Math.min(scaleX, scaleY);
 
-            // Центрирование
-            const totalRowWidth = orient90 ? layout.W : layout.rows * w;
-            const totalRowHeight = orient90 ? layout.rows * w : layout.W;
-            const totalStripeLen = fullSectionsPerRow * l + (hasPartial ? layout.lastSectionLen : 0);
-
-            const offsetX = orient90
-                ? ((roomLength - totalRowWidth) / 2) * scaleX
-                : ((roomLength - totalStripeLen) / 2) * scaleX;
-            const offsetY = orient90
-                ? ((roomWidth - totalStripeLen) / 2) * scaleY
-                : ((roomWidth - totalRowHeight) / 2) * scaleY;
+            // Центрирование по ширине
+            const usedWidth = layout.numRows * layout.rowWidth;
+            const offsetY = ((roomWidth - usedWidth) / 2) * scaleY;
 
             // Контур помещения
             const roomElement = document.createElement('div');
@@ -755,67 +752,18 @@
             container.style.position = 'relative';
             container.appendChild(roomElement);
 
-            // Нумерация секций "рулоном"
-            let sectionNumber = 1;
-            let partialSectionNumber = hasPartial ? rows * fullSectionsPerRow + 1 : null;
-
-            for (let row = 0; row < rows; row++) {
-                for (let s = 0; s < fullSectionsPerRow; s++) {
-                    let x, y, secW, secH;
-                    if (!orient90) {
-                        // Горизонтальная укладка (полосы по ширине)
-                        x = offsetX + s * l * scale;
-                        y = offsetY + row * w * scale;
-                        secW = l * scale;
-                        secH = w * scale;
-                    } else {
-                        // Вертикальная укладка (полосы по длине)
-                        x = offsetX + row * w * scale;
-                        y = offsetY + s * l * scale;
-                        secW = w * scale;
-                        secH = l * scale;
-                    }
-                    const sectionElement = document.createElement('div');
-                    sectionElement.className = 'section';
-                    sectionElement.style.left = x + 'px';
-                    sectionElement.style.top = y + 'px';
-                    sectionElement.style.width = secW + 'px';
-                    sectionElement.style.height = secH + 'px';
-                    sectionElement.innerHTML = `<div class="sec-label">${sectionNumber}</div>
-                        <div class="sec-size">${(orient90 ? w : l).toFixed(2)}×${(orient90 ? l : w).toFixed(2)}м</div>`;
-                    roomElement.appendChild(sectionElement);
-                    sectionNumber++;
-                }
-            }
-
-            // Дробная секция
-            if (hasPartial) {
-                for (let row = 0; row < rows; row++) {
-                    let x, y, secW, secH;
-                    if (!orient90) {
-                        x = offsetX + fullSectionsPerRow * l * scale;
-                        y = offsetY + row * w * scale;
-                        secW = layout.lastSectionLen * scale;
-                        secH = w * scale;
-                    } else {
-                        x = offsetX + row * w * scale;
-                        y = offsetY + fullSectionsPerRow * l * scale;
-                        secW = w * scale;
-                        secH = layout.lastSectionLen * scale;
-                    }
-                    // Пропускать слишком маленькие части (< 0.2м)
-                    if ((orient90 ? layout.lastSectionLen : layout.lastSectionLen) < 0.2) continue;
-                    const sectionElement = document.createElement('div');
-                    sectionElement.className = 'section';
-                    sectionElement.style.left = x + 'px';
-                    sectionElement.style.top = y + 'px';
-                    sectionElement.style.width = secW + 'px';
-                    sectionElement.style.height = secH + 'px';
-                    sectionElement.innerHTML = `<div class="sec-label">${sectionNumber}</div>
-                        <div class="sec-size">${orient90 ? w.toFixed(2) : layout.lastSectionLen.toFixed(2)}×${orient90 ? layout.lastSectionLen.toFixed(2) : w.toFixed(2)}м</div>`;
-                    roomElement.appendChild(sectionElement);
-                }
-            }
+            // Секции
+            layout.sections.forEach(se => {
+                const sectionDiv = document.createElement('div');
+                sectionDiv.className = 'section';
+                sectionDiv.style.width = `${se.length * scale}px`;
+                sectionDiv.style.height = `${se.width * scale}px`;
+                sectionDiv.style.left = `${se.x * scale}px`;
+                sectionDiv.style.top = `${(se.y) * scaleY}px`;
+                sectionDiv.innerHTML = `<div class="sec-label">${se.n}</div>
+                    <div class="sec-size">${se.length.toFixed(2)}×${se.width.toFixed(2)}м</div>`;
+                roomElement.appendChild(sectionDiv);
+            });
         }
 
         function calculateAllRooms() {
