@@ -413,7 +413,6 @@
             <h1>Калькулятор теплого пола - Многокомнатный расчет</h1>
             <p>Рассчитайте оптимальные модели для всех помещений вашего здания</p>
         </header>
-        
         <div class="calculator-content">
             <div class="step">
                 <div class="step-title">
@@ -440,7 +439,6 @@
                     </div>
                 </div>
             </div>
-            
             <div class="step">
                 <div class="step-title">
                     <div style="display: flex; align-items: center;">
@@ -448,26 +446,16 @@
                         Добавьте помещения для расчета
                     </div>
                 </div>
-                
-                <div id="rooms-container">
-                    <!-- Помещения будут добавляться здесь -->
-                </div>
-                
+                <div id="rooms-container"></div>
                 <button class="add-room-btn" id="add-room-btn">+ Добавить помещение</button>
             </div>
-            
             <button class="calculate-btn" id="calculate-btn">Рассчитать для всех помещений</button>
-            
-            <div class="results-container" id="results-container">
-                <!-- Результаты появятся здесь -->
-            </div>
+            <div class="results-container" id="results-container"></div>
         </div>
-        
         <footer>
             <p>Расчет является предварительным. Для точного подбора обратитесь к специалисту.</p>
         </footer>
     </div>
-
     <script>
         // Данные моделей
         const models = [
@@ -510,7 +498,6 @@
         function addRoom() {
             roomCounter++;
             const roomId = `room-${roomCounter}`;
-            
             const roomHTML = `
                 <div class="room-container" id="${roomId}">
                     <div class="room-header">
@@ -537,7 +524,6 @@
                     </div>
                 </div>
             `;
-            
             document.getElementById('rooms-container').insertAdjacentHTML('beforeend', roomHTML);
             updateRoomArea(roomId);
             document.getElementById(`${roomId}-length`).addEventListener('input', () => updateRoomArea(roomId));
@@ -686,75 +672,76 @@
             };
         }
 
-        // Исправленный алгоритм визуализации! 
-       function visualizeLayout(roomResult, containerId) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = '';
-    const roomLength = roomResult.length;
-    const roomWidth = roomResult.width;
-    const model = roomResult.model;
-    const totalSections = roomResult.sectionsNeeded;
-    const maxWidth = 400;
-    const maxHeight = 280;
-    const scaleX = maxWidth / roomLength;
-    const scaleY = maxHeight / roomWidth;
-    const scale = Math.min(scaleX, scaleY);
+        // Главная часть! Визуализация секций по рядам (горизонтально вдоль длины комнаты)
+        function visualizeLayout(roomResult, containerId) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            const roomLength = roomResult.length;
+            const roomWidth = roomResult.width;
+            const model = roomResult.model;
+            const totalSections = roomResult.sectionsNeeded;
+            const maxWidth = 400;
+            const maxHeight = 280;
+            const scaleX = maxWidth / roomLength;
+            const scaleY = maxHeight / roomWidth;
+            const scale = Math.min(scaleX, scaleY);
 
-    // Контур помещения
-    const roomElement = document.createElement('div');
-    roomElement.className = 'room-outline';
-    roomElement.style.width = `${roomLength * scale}px`;
-    roomElement.style.height = `${roomWidth * scale}px`;
-    roomElement.style.left = '50%';
-    roomElement.style.top = '50%';
-    roomElement.style.transform = 'translate(-50%, -50%)';
-    roomElement.style.position = 'absolute';
-    container.style.position = 'relative';
-    container.appendChild(roomElement);
+            // Контур помещения
+            const roomElement = document.createElement('div');
+            roomElement.className = 'room-outline';
+            roomElement.style.width = `${roomLength * scale}px`;
+            roomElement.style.height = `${roomWidth * scale}px`;
+            roomElement.style.left = '50%';
+            roomElement.style.top = '50%';
+            roomElement.style.transform = 'translate(-50%, -50%)';
+            roomElement.style.position = 'absolute';
+            container.style.position = 'relative';
+            container.appendChild(roomElement);
 
-    // Сколько линий помещается по ширине
-    const linesCount = Math.floor(roomWidth / model.width);
-    if (linesCount < 1) return;
-    const sectionsPerLineFloat = totalSections / linesCount;
-    let sectionIndex = 1;
+            // Линий (рядов) по ширине комнаты
+            const linesCount = Math.floor(roomWidth / model.width);
+            if (linesCount < 1) return;
+            const sectionsPerLineFloat = totalSections / linesCount;
+            let sectionIndex = 1;
 
-    for (let line = 0; line < linesCount; line++) {
-        let offsetX = 0;
-        const fullSections = Math.floor(sectionsPerLineFloat);
-        const partialSectionLength = model.length * (sectionsPerLineFloat - fullSections);
+            for (let line = 0; line < linesCount; line++) {
+                let offsetX = 0;
+                const fullSections = Math.floor(sectionsPerLineFloat);
+                const partialSectionLength = model.length * (sectionsPerLineFloat - fullSections);
 
-        // Полные секции на линии
-        for (let s = 0; s < fullSections; s++) {
-            if (offsetX + model.length > roomLength + 0.01) break;
-            const sectionElement = document.createElement('div');
-            sectionElement.className = 'section';
-            sectionElement.style.width = `${model.length * scale}px`;   // длина секции по оси X!
-            sectionElement.style.height = `${model.width * scale}px`;   // ширина секции по оси Y!
-            sectionElement.style.left = `${offsetX * scale}px`;
-            sectionElement.style.top = `${line * model.width * scale}px`;
-            sectionElement.title = `${model.name} (${model.width}м × ${model.length}м)`;
-            const sectionNumber = document.createElement('div');
-            sectionNumber.textContent = sectionIndex++;
-            sectionElement.appendChild(sectionNumber);
-            roomElement.appendChild(sectionElement);
-            offsetX += model.length;
+                // Полные секции (горизонтально вдоль длины!)
+                for (let s = 0; s < fullSections; s++) {
+                    if (offsetX + model.length > roomLength + 0.01) break;
+                    const sectionElement = document.createElement('div');
+                    sectionElement.className = 'section';
+                    sectionElement.style.width = `${model.length * scale}px`;   // длина секции по X!
+                    sectionElement.style.height = `${model.width * scale}px`;   // ширина секции по Y!
+                    sectionElement.style.left = `${offsetX * scale}px`;
+                    sectionElement.style.top = `${line * model.width * scale}px`;
+                    sectionElement.title = `${model.name} (${model.width}м × ${model.length}м)`;
+                    const sectionNumber = document.createElement('div');
+                    sectionNumber.textContent = sectionIndex++;
+                    sectionElement.appendChild(sectionNumber);
+                    roomElement.appendChild(sectionElement);
+                    offsetX += model.length;
+                }
+                // Дробная секция (в конце ряда)
+                if (partialSectionLength > 0.01 && offsetX + partialSectionLength <= roomLength + 0.01) {
+                    const sectionElement = document.createElement('div');
+                    sectionElement.className = 'section';
+                    sectionElement.style.width = `${partialSectionLength * scale}px`; // длина дробной секции по X!
+                    sectionElement.style.height = `${model.width * scale}px`;
+                    sectionElement.style.left = `${offsetX * scale}px`;
+                    sectionElement.style.top = `${line * model.width * scale}px`;
+                    sectionElement.title = `${model.name} (${model.width}м × ${partialSectionLength.toFixed(2)}м)`;
+                    const sectionNumber = document.createElement('div');
+                    sectionNumber.textContent = sectionIndex++;
+                    sectionElement.appendChild(sectionNumber);
+                    roomElement.appendChild(sectionElement);
+                }
+            }
         }
-        // Дробная секция
-        if (partialSectionLength > 0.01 && offsetX + partialSectionLength <= roomLength + 0.01) {
-            const sectionElement = document.createElement('div');
-            sectionElement.className = 'section';
-            sectionElement.style.width = `${partialSectionLength * scale}px`; // длина дробной секции
-            sectionElement.style.height = `${model.width * scale}px`;
-            sectionElement.style.left = `${offsetX * scale}px`;
-            sectionElement.style.top = `${line * model.width * scale}px`;
-            sectionElement.title = `${model.name} (${model.width}м × ${partialSectionLength.toFixed(2)}м)`;
-            const sectionNumber = document.createElement('div');
-            sectionNumber.textContent = sectionIndex++;
-            sectionElement.appendChild(sectionNumber);
-            roomElement.appendChild(sectionElement);
-        }
-    }
-}
+
         function calculateAllRooms() {
             const insulation = getSelectedInsulation();
             const rooms = document.querySelectorAll('.room-container');
