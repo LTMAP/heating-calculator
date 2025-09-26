@@ -203,6 +203,25 @@
         .result-item strong {
             color: #555;
         }
+
+        .summary-table {
+            width: 100%;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            border-collapse: collapse;
+        }
+        .summary-table th, .summary-table td {
+            border: 1px solid #e0e0e0;
+            padding: 8px 10px;
+            text-align: left;
+        }
+        .summary-table th {
+            background: #ebf5fb;
+        }
+        .summary-table tfoot td {
+            font-weight: bold;
+            background: #f0fff4;
+        }
         
         .warning {
             background: #fee;
@@ -230,6 +249,15 @@
             margin: 10px 0;
             font-size: 14px;
             text-align: center;
+        }
+        
+        .summary-result {
+            background: #e0f9e8;
+            border: 1px solid #27ae60;
+            border-radius: 8px;
+            margin-top: 15px;
+            padding: 15px;
+            font-size: 18px;
         }
         
         footer {
@@ -461,13 +489,40 @@
                 const coverage = optimalSections * optimalModel.area;
                 const totalPower = optimalSections * optimalModel.power;
                 
-                displayResult({
+                // Новые параметры по стоимости и расчетам
+                const powerPerSqM = optimalModel.powerM2;
+                const power = totalPower;
+                const layingArea = coverage;
+                const roomArea = totalArea;
+                // Терморегулятор: расчет количества
+                // Примем 1 шт. на 20 м², но минимум 1
+                const thermostatCount = Math.max(1, Math.ceil(layingArea / 20));
+                const thermostatPrice = 5000;
+                const thermostatTotal = thermostatPrice * thermostatCount;
+                // Монтаж: 1000 руб. за м² укладки + 3000 руб. за терморегулятор
+                const installPrice = layingArea * 1000 + thermostatCount * 3000;
+                // Стоимость пола: 3000 руб. за м² укладки
+                const floorPrice = layingArea * 3000;
+                // Общая стоимость
+                const totalCost = installPrice + floorPrice + thermostatTotal;
+                // Потребление электроэнергии: 20 Вт на м² помещения
+                const powerUsage = roomArea * 20;
+                
+                displayResultV2({
                     model: optimalModel,
                     sectionsNeeded: optimalSections,
-                    coverage: coverage,
-                    totalPower: totalPower,
-                    coveragePercentage: coveragePercentage
-                }, roomLength, roomWidth, totalArea, insulation);
+                    coverage: layingArea,
+                    totalPower: power,
+                    coveragePercentage: coveragePercentage,
+                    roomArea: roomArea,
+                    powerUsage: powerUsage,
+                    thermostatCount: thermostatCount,
+                    thermostatPrice: thermostatPrice,
+                    thermostatTotal: thermostatTotal,
+                    installPrice: installPrice,
+                    floorPrice: floorPrice,
+                    totalCost: totalCost
+                }, roomLength, roomWidth, insulation);
             } else {
                 showError('Не найдено подходящей модели для выбранного уровня утепления. Попробуйте изменить критерии.');
             }
@@ -479,8 +534,8 @@
             container.innerHTML = `<div class="warning">${message}</div>`;
         }
 
-        // Отображение результата
-        function displayResult(result, roomLength, roomWidth, totalArea, insulation) {
+        // Отображение результата (Новая версия)
+        function displayResultV2(result, roomLength, roomWidth, insulation) {
             const container = document.getElementById('results-container');
             
             // Определяем текст для уровня утепления
@@ -491,31 +546,66 @@
                 case 'high': insulationText = 'высокому утеплению'; break;
             }
             
-            const model = result.model;
             let coverageInfo = '';
-            
-            // Информация о покрытии
             if (result.coveragePercentage >= 89 && result.coveragePercentage <= 91) {
                 coverageInfo = `<div class="coverage-info">Точное соответствие целевой площади (90%)</div>`;
             } else {
                 coverageInfo = `<div class="coverage-info">Покрытие: ${result.coveragePercentage.toFixed(1)}% от общей площади (диапазон подбора: 85-100%)</div>`;
             }
-            
+
             const html = `
                 <div class="step-title">Рекомендация для помещения ${roomLength}м × ${roomWidth}м (${insulationText})</div>
                 ${coverageInfo}
                 <div class="result-card">
-                    <h4>ОПТИМАЛЬНАЯ МОДЕЛЬ: ${model.name}</h4>
-                    <div class="result-grid">
-                        <div class="result-item"><strong>Мощность на м²:</strong> ${model.powerM2} Вт/м²</div>
-                        <div class="result-item"><strong>Мощность секции:</strong> ${model.power} Вт</div>
-                        <div class="result-item"><strong>Секций требуется:</strong> ${result.sectionsNeeded} шт.</div>
-                        <div class="result-item"><strong>Покрываемая площадь:</strong> ${result.coverage.toFixed(2)} м²</div>
-                        <div class="result-item"><strong>Общая мощность:</strong> ${result.totalPower} Вт</div>
-                        <div class="result-item"><strong>Размер секции:</strong> ${model.width}м × ${model.length}м</div>
+                    <h4>ОПТИМАЛЬНАЯ МОДЕЛЬ: ${result.model.name}</h4>
+                    <table class="summary-table">
+                        <tbody>
+                            <tr>
+                                <th>Площадь помещения</th>
+                                <td>${result.roomArea.toFixed(2)} м²</td>
+                            </tr>
+                            <tr>
+                                <th>Площадь укладки</th>
+                                <td>${result.coverage.toFixed(2)} м²</td>
+                            </tr>
+                            <tr>
+                                <th>Мощность теплого пола</th>
+                                <td>${result.totalPower} Вт</td>
+                            </tr>
+                            <tr>
+                                <th>Потребление электроэнергии</th>
+                                <td>${result.powerUsage.toFixed(0)} Вт</td>
+                            </tr>
+                            <tr>
+                                <th>Терморегуляторы</th>
+                                <td>${result.thermostatCount} шт. × ${result.thermostatPrice} руб. = ${result.thermostatTotal} руб.</td>
+                            </tr>
+                            <tr>
+                                <th>Монтаж</th>
+                                <td>1000 руб × ${result.coverage.toFixed(2)} м² + 3000 руб × ${result.thermostatCount} шт. = ${result.installPrice.toFixed(0)} руб.</td>
+                            </tr>
+                            <tr>
+                                <th>Стоимость теплого пола</th>
+                                <td>3000 руб × ${result.coverage.toFixed(2)} м² = ${result.floorPrice.toFixed(0)} руб.</td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <td>Общая стоимость</td>
+                                <td>${result.totalCost.toLocaleString('ru-RU')} руб.</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <div class="summary-result">
+                        Итог: <br />
+                        Теплый пол: ${result.floorPrice.toLocaleString('ru-RU')} руб. <br />
+                        Терморегуляторы: ${result.thermostatTotal.toLocaleString('ru-RU')} руб. <br />
+                        Монтаж: ${result.installPrice.toLocaleString('ru-RU')} руб. <br />
+                        <strong>Общая стоимость: ${result.totalCost.toLocaleString('ru-RU')} руб.</strong>
                     </div>
                     ${result.totalPower > 2500 ? 
-                        `<div class="power-warning">Внимание: Мощность близка к предельной. Убедитесь в надежности электропроводки.</div>` : ''}
+                        `<div class="power-warning">Внимание: Мощность близка к предельной. Убедитесь в надежности электропроводки.</div>`
+                        : ''}
                 </div>
             `;
             
