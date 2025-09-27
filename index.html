@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калькулятор теплого пола - Многокомнатный расчет</title>
     <style>
+        /* Стили остаются без изменений, они хорошо продуманы */
         body { background: #f5f7fa; color: #333; font-family: Arial, sans-serif; }
         .calculator-container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
         header { background: #2c3e50; color: white; padding: 30px; text-align: center; }
@@ -36,8 +37,24 @@
         .coverage-info { background: #e8f4f8; color: #2c3e50; padding: 10px; border-radius: 6px; margin: 10px 0; font-size: 14px; text-align: center; }
         .warning { background: #fee; color: #c0392b; padding: 15px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #c0392b; }
         .power-warning { background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #ffc107; }
+        
+        /* Дополнительные стили для улучшения UX */
+        .room-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .room-dimensions { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
+        .dimension { display: flex; flex-direction: column; }
+        .dimension label { font-weight: bold; margin-bottom: 5px; }
+        .dimension input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .area-info { background: #e8f4f8; padding: 10px; border-radius: 6px; text-align: center; }
+        .remove-room { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
+        .add-room-btn { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-bottom: 20px; }
+        .total-summary { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 30px; }
+        .summary-table { width: 100%; border-collapse: collapse; }
+        .summary-table th, .summary-table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+        .summary-table th { background: #34495e; color: white; }
+        
         @media (max-width: 768px) {
             .room-result-content { grid-template-columns: 1fr; }
+            .room-dimensions { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -86,12 +103,12 @@
             <button class="calculate-btn" id="calculate-btn">Рассчитать для всех помещений</button>
             <div class="results-container" id="results-container"></div>
         </div>
-        <footer>
+        <footer style="padding: 20px; text-align: center; background: #f8f9fa; color: #666; font-size: 14px;">
             <p>Расчет является предварительным. Для точного подбора обратитесь к специалисту.</p>
         </footer>
     </div>
     <script>
-        // Данные моделей
+        // Данные моделей теплого пола
         const models = [
             {name: 'ТКС-01', power: 230, powerM2: 460, area: 0.5, width: 1, length: 0.5},
             {name: 'ТКС-02', power: 180, powerM2: 360, area: 0.5, width: 1, length: 0.5},
@@ -116,9 +133,10 @@
             setupOptionSelection('insulation-options');
             document.getElementById('add-room-btn').addEventListener('click', addRoom);
             document.getElementById('calculate-btn').addEventListener('click', calculateAllRooms);
-            addRoom();
+            addRoom(); // Добавляем первое помещение по умолчанию
         });
 
+        // Настройка выбора опций
         function setupOptionSelection(containerId) {
             const options = document.querySelectorAll(`#${containerId} .option-card`);
             options.forEach(option => {
@@ -129,6 +147,7 @@
             });
         }
 
+        // Добавление нового помещения
         function addRoom() {
             roomCounter++;
             const roomId = `room-${roomCounter}`;
@@ -160,10 +179,13 @@
             `;
             document.getElementById('rooms-container').insertAdjacentHTML('beforeend', roomHTML);
             updateRoomArea(roomId);
+            
+            // Добавляем обработчики событий для обновления площади при изменении размеров
             document.getElementById(`${roomId}-length`).addEventListener('input', () => updateRoomArea(roomId));
             document.getElementById(`${roomId}-width`).addEventListener('input', () => updateRoomArea(roomId));
         }
 
+        // Удаление помещения
         function removeRoom(roomId) {
             if (document.querySelectorAll('.room-container').length <= 1) {
                 alert('Должно остаться хотя бы одно помещение');
@@ -173,6 +195,7 @@
             renumberRooms();
         }
 
+        // Перенумерация оставшихся помещений
         function renumberRooms() {
             const rooms = document.querySelectorAll('.room-container');
             roomCounter = 0;
@@ -188,6 +211,8 @@
                 }
                 const removeBtn = room.querySelector('.remove-room');
                 removeBtn.setAttribute('onclick', `removeRoom('${roomId}')`);
+                
+                // Обновляем ID всех элементов внутри помещения
                 const inputs = room.querySelectorAll('input');
                 inputs.forEach(input => {
                     const oldId = input.id;
@@ -205,6 +230,7 @@
             });
         }
 
+        // Обновление площади помещения
         function updateRoomArea(roomId) {
             const length = parseFloat(document.getElementById(`${roomId}-length`).value) || 0;
             const width = parseFloat(document.getElementById(`${roomId}-width`).value) || 0;
@@ -214,15 +240,14 @@
             document.getElementById(`${roomId}-effective-area`).textContent = effectiveArea.toFixed(2);
         }
 
+        // Получение выбранного уровня утепления
         function getSelectedInsulation() {
             const selected = document.querySelector('#insulation-options .option-card.selected');
             return selected ? selected.getAttribute('data-value') : null;
         }
 
-        // Новый расчет секций по реальной укладке (ряд, секция, дробная секция)
+        // Расчет расположения секций
         function calculateSectionLayout(roomLen, roomWid, model, orient90 = false) {
-            // orient90=false: length = длина секции вдоль длины комнаты, width = ширина секции вдоль ширины
-            // orient90=true: поменять местами
             const rowWidth = orient90 ? model.length : model.width;
             const rowLength = orient90 ? model.width : model.length;
 
@@ -278,6 +303,7 @@
             };
         }
 
+        // Проверка соответствия модели требованиям
         function checkFit(model, layout, roomLen, roomWid, minCoverage = 0.85) {
             if (!layout) return false;
             // Мощность
@@ -291,6 +317,7 @@
             return true;
         }
 
+        // Расчет для одного помещения
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
             const suitableModels = models.filter(model => {
@@ -353,6 +380,7 @@
             };
         }
 
+        // Визуализация схемы укладки
         function visualizeLayout(roomResult, containerId) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -362,7 +390,6 @@
             const roomWidth = roomResult.width;
             const layout = roomResult.layout;
             const model = roomResult.model;
-            const orient90 = roomResult.orient90;
 
             const maxWidth = 400;
             const maxHeight = 280;
@@ -400,29 +427,40 @@
             });
         }
 
+        // Расчет для всех помещений
         function calculateAllRooms() {
             const insulation = getSelectedInsulation();
             const rooms = document.querySelectorAll('.room-container');
             roomsData = [];
+            
             if (rooms.length === 0) {
                 showError('Добавьте хотя бы одно помещение');
                 return;
             }
+            
+            let hasErrors = false;
             rooms.forEach(room => {
                 const roomId = room.id;
                 const roomName = document.getElementById(`${roomId}-name`).value || `Помещение ${roomId}`;
                 const length = parseFloat(document.getElementById(`${roomId}-length`).value);
                 const width = parseFloat(document.getElementById(`${roomId}-width`).value);
-                if (!length || !width) {
-                    showError(`Заполните размеры для ${roomName}`);
+                
+                if (!length || !width || length <= 0 || width <= 0) {
+                    showError(`Заполните корректные размеры для ${roomName}`);
+                    hasErrors = true;
                     return;
                 }
+                
                 const roomResult = calculateRoom(roomId, roomName, length, width, insulation);
                 roomsData.push(roomResult);
             });
+            
+            if (hasErrors) return;
+            
             displayAllResults(roomsData);
         }
 
+        // Отображение результатов расчета
         function displayAllResults(roomsData) {
             const container = document.getElementById('results-container');
             let html = '';
@@ -431,6 +469,7 @@
             let totalPower = 0;
             let totalCost = 0;
             let totalThermostats = 0;
+            
             roomsData.forEach(room => {
                 if (room.success) {
                     totalArea += room.totalArea;
@@ -440,6 +479,7 @@
                     totalThermostats += room.thermostatCount;
                 }
             });
+            
             roomsData.forEach((room, index) => {
                 if (!room.success) {
                     html += `
@@ -452,6 +492,7 @@
                     `;
                     return;
                 }
+                
                 const visualizationId = `visualization-${index}`;
                 html += `
                     <div class="room-result">
@@ -483,6 +524,7 @@
                     </div>
                 `;
             });
+            
             if (roomsData.some(room => room.success)) {
                 html += `
                     <div class="total-summary">
@@ -497,7 +539,10 @@
                     </div>
                 `;
             }
+            
             container.innerHTML = html;
+            
+            // Визуализация схем укладки после отрисовки DOM
             roomsData.forEach((room, index) => {
                 if (room.success) {
                     setTimeout(() => {
@@ -507,6 +552,7 @@
             });
         }
 
+        // Отображение ошибок
         function showError(message) {
             const container = document.getElementById('results-container');
             container.innerHTML = `<div class="warning">${message}</div>`;
