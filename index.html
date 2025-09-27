@@ -529,6 +529,16 @@
             border-left: 4px solid #ffc107;
             font-size: 14px;
         }
+        
+        .coverage-success {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border-left: 4px solid #28a745;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -720,6 +730,11 @@
             return selected ? selected.getAttribute('data-value') : null;
         }
 
+        // Округление до кратного 10 см (0.1 м)
+        function roundToTenCm(value) {
+            return Math.round(value * 10) / 10;
+        }
+
         // Расчет расположения секций с учетом отступов от стен
         function calculateSectionLayout(roomLen, roomWid, model, orient90 = false) {
             // Отступ от стен 10 см
@@ -752,38 +767,48 @@
                 let xPos = wallOffset;
                 let remainingLength = availableLen;
                 
-                while (remainingLength > 0) {
-                    // Определяем длину текущей секции
-                    let currentLength = sectionLength;
-                    let isPartial = false;
-                    
-                    // Если остаток меньше полной секции, создаем дробную
-                    if (remainingLength < sectionLength) {
-                        currentLength = remainingLength;
-                        isPartial = true;
-                    }
-                    
-                    // Минимальная длина секции - 0.1м
-                    if (currentLength < 0.1) break;
-                    
-                    // Мощность секции пропорциональна ее длине
-                    const sectionPower = model.power * (currentLength / sectionLength);
-                    
+                // Количество полных секций в ряду
+                const fullSectionsInRow = Math.floor(remainingLength / sectionLength);
+                
+                // Добавляем полные секции
+                for (let i = 0; i < fullSectionsInRow; i++) {
                     allSections.push({
                         n: sectionNumber++,
                         width: sectionWidth,
-                        length: currentLength,
-                        isPartial: isPartial,
+                        length: sectionLength,
+                        isPartial: false,
                         row: r,
                         x: xPos,
                         y: offsetY + r * sectionWidth,
-                        power: sectionPower
+                        power: model.power
                     });
                     
-                    totalArea += sectionWidth * currentLength;
-                    totalPower += sectionPower;
-                    remainingLength -= currentLength;
-                    xPos += currentLength;
+                    totalArea += sectionWidth * sectionLength;
+                    totalPower += model.power;
+                    remainingLength -= sectionLength;
+                    xPos += sectionLength;
+                }
+                
+                // Добавляем дробную секцию, если остаток >= 0.2м (кратно 10 см)
+                if (remainingLength >= 0.2) {
+                    // Округляем до кратного 10 см
+                    const partialLength = roundToTenCm(remainingLength);
+                    
+                    if (partialLength >= 0.2) {
+                        allSections.push({
+                            n: sectionNumber++,
+                            width: sectionWidth,
+                            length: partialLength,
+                            isPartial: true,
+                            row: r,
+                            x: xPos,
+                            y: offsetY + r * sectionWidth,
+                            power: model.power * (partialLength / sectionLength)
+                        });
+                        
+                        totalArea += sectionWidth * partialLength;
+                        totalPower += model.power * (partialLength / sectionLength);
+                    }
                 }
             }
             
@@ -812,7 +837,7 @@
             // Проверка максимальной мощности (3360 Вт)
             if (layout.totalPower > 3360) return false;
             
-            // НОВОЕ: Проверка минимальной мощности (140 Вт/м² от общей площади)
+            // Проверка минимальной мощности (140 Вт/м² от общей площади)
             const minRequiredPower = totalArea * 140;
             if (layout.totalPower < minRequiredPower) return false;
             
@@ -879,9 +904,9 @@
                     if (!checkFit(model, layout, length, width)) continue;
                     
                     const coverage = (layout.area / totalArea) * 100;
-                    const d = Math.abs(coverage - 90);
                     
-                    if (!bestLayout || d < Math.abs(bestCoverage - 90)) {
+                    // Предпочитаем решения с максимальным покрытием
+                    if (!bestLayout || coverage > bestCoverage) {
                         bestLayout = layout;
                         bestModel = model;
                         bestCoverage = coverage;
@@ -899,9 +924,8 @@
                         if (!checkFit(model, layout, length, width, 0.6)) continue; // Еще больше снижаем требование к покрытию
                         
                         const coverage = (layout.area / totalArea) * 100;
-                        const d = Math.abs(coverage - 90);
                         
-                        if (!bestLayout || d < Math.abs(bestCoverage - 90)) {
+                        if (!bestLayout || coverage > bestCoverage) {
                             bestLayout = layout;
                             bestModel = model;
                             bestCoverage = coverage;
@@ -1085,6 +1109,8 @@
                 const visualizationId = `visualization-${index}`;
                 const partialSections = room.layout.sections.filter(s => s.isPartial).length;
                 const fullSections = room.sectionsNeeded - partialSections;
+                const availableArea = (room.length - 0.2) * (room.width - 0.2); // Минус отступы 10 см с каждой стороны
+                const coverageEfficiency = (room.coverage / availableArea) * 100;
                 
                 html += `
                     <div class="room-result">
@@ -1099,11 +1125,15 @@
                                 <div class="min-power-info">
                                     <strong>Минимальная мощность для помещения:</strong> ${room.minRequiredPower.toFixed(0)} Вт (140 Вт/м² × ${room.totalArea.toFixed(1)} м²)
                                 </div>
+                                ${coverageEfficiency > 95 ? 
+                                    `<div class="coverage-success">Отличное покрытие! Заполнено ${coverageEfficiency.toFixed(1)}% доступной площади.</div>` : 
+                                    `<div class="coverage-info">Заполнено ${coverageEfficiency.toFixed(1)}% доступной площади (с учетом отступов от стен).</div>`
+                                }
                                 <div class="result-grid">
                                     <div class="result-item"><strong>Мощность на м²:</strong> ${room.model.powerM2} Вт/м²</div>
                                     <div class="result-item"><strong>Мощность секции:</strong> ${room.model.power} Вт</div>
                                     <div class="result-item"><strong>Полных секций:</strong> ${fullSections}</div>
-                                    <div class="result-item"><strong>Дробных секций:</strong> ${partialSections}</div>
+                                    <div class="result-item"><strong>Дробных секций:</strong> ${partialSections} (кратно 10 см)</div>
                                     <div class="result-item"><strong>Покрываемая площадь:</strong> ${room.coverage.toFixed(2)} м²</div>
                                     <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower.toFixed(0)} Вт</div>
                                     <div class="result-item"><strong>Размер секции:</strong> ${room.model.width}м × ${room.model.length}м</div>
@@ -1113,7 +1143,7 @@
                                     `<div class="power-warning">Внимание: Мощность близка к предельной. Убедитесь в надежности электропроводки и согласуйте проект с электриком.</div>` : ''
                                 }
                                 <div class="section-info">
-                                    <strong>Секции:</strong>
+                                    <strong>Секции (дробные кратны 10 см):</strong>
                                     <div class="section-list">
                                         ${room.layout.sections.map(s => 
                                             `<div class="section-item">Секция ${s.n}: ${s.length.toFixed(2)}м × ${s.width.toFixed(2)}м ${s.isPartial ? '(дробная)' : ''}</div>`
@@ -1144,7 +1174,7 @@
                             <tr><th>Минимальная требуемая мощность</th><td>${(totalArea * 140).toFixed(0)} Вт</td></tr>
                             <tr><th>Общая мощность системы</th><td>${totalPower.toFixed(0)} Вт</td></tr>
                             <tr><th>Количество терморегуляторов</th><td>${totalThermostats} шт.</td></tr>
-                            <tr><th>Всего секций</th><td>${totalSections} шт. (${totalPartialSections} дробных)</td></tr>
+                            <tr><th>Всего секций</th><td>${totalSections} шт. (${totalPartialSections} дробных, кратных 10 см)</td></tr>
                             <tr><th>Общая стоимость</th><td>${totalCost.toLocaleString('ru-RU')} руб.</td></tr>
                         </table>
                     </div>
@@ -1165,7 +1195,7 @@
 
         // Отображение ошибок
         function showError(message) {
-            const container = document.getElementById('results-container');
+            const constainer = document.getElementById('results-container');
             container.innerHTML = `<div class="warning">${message}</div>`;
         }
     </script>
