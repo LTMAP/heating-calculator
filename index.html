@@ -5,56 +5,510 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калькулятор теплого пола - Многокомнатный расчет</title>
     <style>
-        /* Стили остаются без изменений, они хорошо продуманы */
-        body { background: #f5f7fa; color: #333; font-family: Arial, sans-serif; }
-        .calculator-container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); overflow: hidden; }
-        header { background: #2c3e50; color: white; padding: 30px; text-align: center; }
-        .calculator-content { padding: 30px; }
-        .step { margin-bottom: 30px; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; }
-        .step-title { font-size: 20px; font-weight: bold; margin-bottom: 20px; color: #2c3e50; display: flex; align-items: center; justify-content: space-between; }
-        .step-number { background: #3498db; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 10px; }
-        .options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }
-        .option-card { border: 2px solid #e0e0e0; border-radius: 8px; padding: 20px; cursor: pointer; transition: all 0.3s; }
-        .option-card.selected { border-color: #3498db; background-color: #ebf5fb; }
-        .room-container { border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px; margin-bottom: 20px; background: #f9f9f9; }
-        .calculate-btn { width: 100%; padding: 15px; background: #3498db; color: white; border: none; border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer; margin: 20px 0; }
-        .calculate-btn:hover { background: #2980b9; }
-        .results-container { margin-top: 30px; }
-        .room-result { margin-bottom: 30px; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden; }
-        .room-result-header { background: #34495e; color: white; padding: 15px; font-size: 18px; font-weight: bold; }
-        .room-result-content { padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        .result-card { border: 2px solid #27ae60; border-radius: 8px; padding: 20px; background-color: #f0fff4; }
-        .result-card h4 { font-size: 20px; margin-bottom: 15px; color: #2c3e50; text-align: center; }
-        .result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 15px 0; }
-        .result-item { padding: 8px; background: #f8f9fa; border-radius: 6px; }
-        .layout-visualization { border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; background: white; }
-        .visualization-title { font-size: 16px; font-weight: bold; margin-bottom: 10px; text-align: center; }
-        .visualization-container { width: 100%; height: 300px; border: 1px solid #ddd; position: relative; background: #f9f9f9; margin-bottom: 10px; }
-        .room-outline { position: absolute; border: 2px solid #3498db; background: rgba(52, 152, 219, 0.1); }
-        .section { position: absolute; border: 1px solid #e74c3c; background: rgba(231, 76, 60, 0.2); display: flex; align-items: center; justify-content: center; font-size: 11px; color: #c0392b; overflow: hidden; flex-direction: column;}
-        .section .sec-label { font-weight: bold; }
-        .section .sec-size { font-size: 10px; color: #333; }
-        .coverage-info { background: #e8f4f8; color: #2c3e50; padding: 10px; border-radius: 6px; margin: 10px 0; font-size: 14px; text-align: center; }
-        .warning { background: #fee; color: #c0392b; padding: 15px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #c0392b; }
-        .power-warning { background: #fff3cd; color: #856404; padding: 12px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #ffc107; }
+        :root {
+            --primary: #3498db;
+            --primary-dark: #2980b9;
+            --secondary: #2c3e50;
+            --accent: #27ae60;
+            --warning: #e74c3c;
+            --light: #f5f7fa;
+            --dark: #333;
+            --gray: #e0e0e0;
+            --text: #333;
+            --text-light: #666;
+            --white: #fff;
+            --border-radius: 8px;
+            --shadow: 0 2px 10px rgba(0,0,0,0.1);
+            --transition: all 0.3s ease;
+        }
         
-        /* Дополнительные стили для улучшения UX */
-        .room-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .room-dimensions { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px; }
-        .dimension { display: flex; flex-direction: column; }
-        .dimension label { font-weight: bold; margin-bottom: 5px; }
-        .dimension input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-        .area-info { background: #e8f4f8; padding: 10px; border-radius: 6px; text-align: center; }
-        .remove-room { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
-        .add-room-btn { background: #27ae60; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin-bottom: 20px; }
-        .total-summary { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 30px; }
-        .summary-table { width: 100%; border-collapse: collapse; }
-        .summary-table th, .summary-table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-        .summary-table th { background: #34495e; color: white; }
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            background: var(--light);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+        }
+        
+        .calculator-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            background: var(--white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+        
+        header {
+            background: var(--secondary);
+            color: var(--white);
+            padding: 30px;
+            text-align: center;
+        }
+        
+        header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        header p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        .calculator-content {
+            padding: 30px;
+        }
+        
+        .step {
+            margin-bottom: 30px;
+            padding: 25px;
+            border: 1px solid var(--gray);
+            border-radius: var(--border-radius);
+            background: var(--white);
+        }
+        
+        .step-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: var(--secondary);
+            display: flex;
+            align-items: center;
+        }
+        
+        .step-number {
+            background: var(--primary);
+            color: var(--white);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        .options-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        
+        .option-card {
+            border: 2px solid var(--gray);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            cursor: pointer;
+            transition: var(--transition);
+            background: var(--white);
+        }
+        
+        .option-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        .option-card.selected {
+            border-color: var(--primary);
+            background-color: #ebf5fb;
+            box-shadow: 0 4px 8px rgba(52, 152, 219, 0.2);
+        }
+        
+        .option-card h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: var(--secondary);
+        }
+        
+        .option-card p {
+            color: var(--text-light);
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .power-info {
+            font-weight: bold;
+            color: var(--primary);
+            font-size: 14px;
+        }
+        
+        .room-container {
+            border: 1px solid var(--gray);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 20px;
+            background: #f9f9f9;
+        }
+        
+        .room-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .room-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--secondary);
+        }
+        
+        .remove-room {
+            background: var(--warning);
+            color: var(--white);
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: var(--transition);
+        }
+        
+        .remove-room:hover {
+            background: #c0392b;
+        }
+        
+        .room-dimensions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .dimension {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .dimension label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: var(--secondary);
+        }
+        
+        .dimension input {
+            padding: 10px;
+            border: 1px solid var(--gray);
+            border-radius: 4px;
+            font-size: 16px;
+            transition: var(--transition);
+        }
+        
+        .dimension input:focus {
+            border-color: var(--primary);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+        
+        .area-info {
+            background: #e8f4f8;
+            padding: 12px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 15px;
+            color: var(--secondary);
+        }
+        
+        .add-room-btn {
+            background: var(--accent);
+            color: var(--white);
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            font-size: 16px;
+            font-weight: bold;
+            transition: var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        
+        .add-room-btn:hover {
+            background: #219653;
+            transform: translateY(-2px);
+        }
+        
+        .calculate-btn {
+            width: 100%;
+            padding: 16px;
+            background: var(--primary);
+            color: var(--white);
+            border: none;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 20px 0;
+            transition: var(--transition);
+        }
+        
+        .calculate-btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+        
+        .results-container {
+            margin-top: 30px;
+        }
+        
+        .room-result {
+            margin-bottom: 30px;
+            border: 1px solid var(--gray);
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            background: var(--white);
+        }
+        
+        .room-result-header {
+            background: #34495e;
+            color: var(--white);
+            padding: 15px 20px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .room-result-content {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .result-card {
+            border: 2px solid var(--accent);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            background-color: #f0fff4;
+        }
+        
+        .result-card h4 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: var(--secondary);
+            text-align: center;
+        }
+        
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .result-item {
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        .result-item strong {
+            color: var(--secondary);
+        }
+        
+        .layout-visualization {
+            border: 1px solid var(--gray);
+            border-radius: var(--border-radius);
+            padding: 15px;
+            background: var(--white);
+        }
+        
+        .visualization-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+            color: var(--secondary);
+        }
+        
+        .visualization-container {
+            width: 100%;
+            height: 300px;
+            border: 1px solid var(--gray);
+            position: relative;
+            background: #f9f9f9;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+        
+        .room-outline {
+            position: absolute;
+            border: 2px solid var(--primary);
+            background: rgba(52, 152, 219, 0.05);
+        }
+        
+        .section {
+            position: absolute;
+            border: 1px solid var(--warning);
+            background: rgba(231, 76, 60, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            color: #c0392b;
+            overflow: hidden;
+            flex-direction: column;
+            transition: var(--transition);
+        }
+        
+        .section:hover {
+            background: rgba(231, 76, 60, 0.2);
+            z-index: 10;
+        }
+        
+        .section .sec-label {
+            font-weight: bold;
+        }
+        
+        .section .sec-size {
+            font-size: 10px;
+            color: #333;
+        }
+        
+        .section.partial {
+            background: rgba(243, 156, 18, 0.2);
+            border-color: #f39c12;
+        }
+        
+        .coverage-info {
+            background: #e8f4f8;
+            color: var(--secondary);
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-size: 14px;
+            text-align: center;
+        }
+        
+        .warning {
+            background: #fee;
+            color: #c0392b;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border-left: 4px solid #c0392b;
+        }
+        
+        .power-warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .total-summary {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: var(--border-radius);
+            margin-top: 30px;
+            border: 1px solid var(--gray);
+        }
+        
+        .total-summary h3 {
+            font-size: 22px;
+            margin-bottom: 20px;
+            color: var(--secondary);
+            text-align: center;
+        }
+        
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 16px;
+        }
+        
+        .summary-table th, .summary-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--gray);
+        }
+        
+        .summary-table th {
+            background: var(--secondary);
+            color: var(--white);
+            font-weight: bold;
+        }
+        
+        .summary-table tr:last-child td {
+            border-bottom: none;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        
+        footer {
+            padding: 20px;
+            text-align: center;
+            background: #f8f9fa;
+            color: var(--text-light);
+            font-size: 14px;
+            border-top: 1px solid var(--gray);
+        }
         
         @media (max-width: 768px) {
-            .room-result-content { grid-template-columns: 1fr; }
-            .room-dimensions { grid-template-columns: 1fr; }
+            .room-result-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .room-dimensions {
+                grid-template-columns: 1fr;
+            }
+            
+            .options-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .calculator-content {
+                padding: 20px;
+            }
+            
+            .step {
+                padding: 15px;
+            }
+            
+            .summary-table {
+                font-size: 14px;
+            }
+            
+            .summary-table th, .summary-table td {
+                padding: 8px 10px;
+            }
+        }
+        
+        .section-info {
+            margin-top: 10px;
+            font-size: 14px;
+            color: var(--text-light);
+        }
+        
+        .section-list {
+            max-height: 150px;
+            overflow-y: auto;
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        .section-item {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+        }
+        
+        .section-item:last-child {
+            border-bottom: none;
         }
     </style>
 </head>
@@ -67,10 +521,8 @@
         <div class="calculator-content">
             <div class="step">
                 <div class="step-title">
-                    <div style="display: flex; align-items: center;">
-                        <span class="step-number">1</span>
-                        Оцените утепление помещения
-                    </div>
+                    <span class="step-number">1</span>
+                    Оцените утепление помещения
                 </div>
                 <div class="options-grid" id="insulation-options">
                     <div class="option-card selected" data-value="low">
@@ -92,18 +544,21 @@
             </div>
             <div class="step">
                 <div class="step-title">
-                    <div style="display: flex; align-items: center;">
-                        <span class="step-number">2</span>
-                        Добавьте помещения для расчета
-                    </div>
+                    <span class="step-number">2</span>
+                    Добавьте помещения для расчета
                 </div>
                 <div id="rooms-container"></div>
-                <button class="add-room-btn" id="add-room-btn">+ Добавить помещение</button>
+                <button class="add-room-btn" id="add-room-btn">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M8 0a1 1 0 0 1 1 1v6h6a1 1 0 1 1 0 2H9v6a1 1 0 1 1-2 0V9H1a1 1 0 0 1 0-2h6V1a1 1 0 0 1 1-1z"/>
+                    </svg>
+                    Добавить помещение
+                </button>
             </div>
             <button class="calculate-btn" id="calculate-btn">Рассчитать для всех помещений</button>
             <div class="results-container" id="results-container"></div>
         </div>
-        <footer style="padding: 20px; text-align: center; background: #f8f9fa; color: #666; font-size: 14px;">
+        <footer>
             <p>Расчет является предварительным. Для точного подбора обратитесь к специалисту.</p>
         </footer>
     </div>
@@ -164,11 +619,11 @@
                         </div>
                         <div class="dimension">
                             <label for="${roomId}-length">Длина (м)</label>
-                            <input type="number" id="${roomId}-length" min="1" max="20" step="0.1" value="${4 + roomCounter * 0.5}">
+                            <input type="number" id="${roomId}-length" min="0.5" max="50" step="0.1" value="${4 + roomCounter * 0.5}">
                         </div>
                         <div class="dimension">
                             <label for="${roomId}-width">Ширина (м)</label>
-                            <input type="number" id="${roomId}-width" min="1" max="20" step="0.1" value="${3 + roomCounter * 0.3}">
+                            <input type="number" id="${roomId}-width" min="0.5" max="50" step="0.1" value="${3 + roomCounter * 0.3}">
                         </div>
                     </div>
                     <div class="area-info">
@@ -246,80 +701,106 @@
             return selected ? selected.getAttribute('data-value') : null;
         }
 
-        // Расчет расположения секций
+        // Расчет расположения секций с учетом отступов от стен
         function calculateSectionLayout(roomLen, roomWid, model, orient90 = false) {
-            const rowWidth = orient90 ? model.length : model.width;
-            const rowLength = orient90 ? model.width : model.length;
-
-            const numRows = Math.floor(roomWid / rowWidth);
+            // Отступ от стен 10 см
+            const wallOffset = 0.1;
+            
+            // Доступная площадь после отступов
+            const availableLen = roomLen - 2 * wallOffset;
+            const availableWid = roomWid - 2 * wallOffset;
+            
+            if (availableLen <= 0 || availableWid <= 0) return null;
+            
+            // Определяем размеры секции в зависимости от ориентации
+            const sectionWidth = orient90 ? model.length : model.width;
+            const sectionLength = orient90 ? model.width : model.length;
+            
+            // Количество рядов, которые поместятся по ширине
+            const numRows = Math.floor(availableWid / sectionWidth);
             if (numRows < 1) return null;
-            const coveredWidth = numRows * rowWidth;
-            const offsetY = (roomWid - coveredWidth) / 2;
-
+            
+            // Центрирование рядов по ширине
+            const totalRowWidth = numRows * sectionWidth;
+            const offsetY = wallOffset + (availableWid - totalRowWidth) / 2;
+            
             let allSections = [];
             let totalArea = 0;
             let sectionNumber = 1;
+            let totalPower = 0;
 
             for (let r = 0; r < numRows; r++) {
-                let xRow = 0;
-                let remaining = roomLen;
-
-                while (remaining >= rowLength - 0.0001) {
+                let xPos = wallOffset;
+                let remainingLength = availableLen;
+                
+                while (remainingLength > 0) {
+                    // Определяем длину текущей секции
+                    let currentLength = sectionLength;
+                    let isPartial = false;
+                    
+                    // Если остаток меньше полной секции, создаем дробную
+                    if (remainingLength < sectionLength) {
+                        currentLength = remainingLength;
+                        isPartial = true;
+                    }
+                    
+                    // Минимальная длина секции - 0.2м
+                    if (currentLength < 0.2) break;
+                    
+                    // Мощность секции пропорциональна ее длине
+                    const sectionPower = model.power * (currentLength / sectionLength);
+                    
                     allSections.push({
                         n: sectionNumber++,
-                        width: rowWidth,
-                        length: rowLength,
-                        isPartial: false,
+                        width: sectionWidth,
+                        length: currentLength,
+                        isPartial: isPartial,
                         row: r,
-                        x: xRow,
-                        y: offsetY + r * rowWidth
+                        x: xPos,
+                        y: offsetY + r * sectionWidth,
+                        power: sectionPower
                     });
-                    totalArea += rowWidth * rowLength;
-                    remaining -= rowLength;
-                    xRow += rowLength;
-                }
-                // Дробная секция в ряду, только если остаток >= 0.2м
-                if (remaining >= 0.2) {
-                    allSections.push({
-                        n: sectionNumber++,
-                        width: rowWidth,
-                        length: remaining,
-                        isPartial: true,
-                        row: r,
-                        x: xRow,
-                        y: offsetY + r * rowWidth
-                    });
-                    totalArea += rowWidth * remaining;
+                    
+                    totalArea += sectionWidth * currentLength;
+                    totalPower += sectionPower;
+                    remainingLength -= currentLength;
+                    xPos += currentLength;
                 }
             }
+            
             return {
                 numRows,
-                rowWidth,
-                rowLength,
+                sectionWidth,
+                sectionLength,
                 offsetY,
                 sections: allSections,
                 area: totalArea,
-                orient90
+                totalPower: totalPower,
+                orient90,
+                wallOffset
             };
         }
 
         // Проверка соответствия модели требованиям
         function checkFit(model, layout, roomLen, roomWid, minCoverage = 0.85) {
             if (!layout) return false;
-            // Мощность
-            const maxPower = 3360;
-            const totalPower = layout.sections.length * model.power;
-            if (totalPower > maxPower) return false;
-            // Покрытие
+            
+            // Проверка покрытия
             const totalArea = roomLen * roomWid;
             const coverage = layout.area / totalArea;
             if (coverage < minCoverage) return false;
+            
+            // Проверка максимальной мощности (3360 Вт)
+            if (layout.totalPower > 3360) return false;
+            
             return true;
         }
 
         // Расчет для одного помещения
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
+            
+            // Фильтрация моделей по уровню утепления
             const suitableModels = models.filter(model => {
                 if (insulation === 'low' && model.powerM2 >= 200) return true;
                 if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
@@ -327,34 +808,37 @@
                 return false;
             }).sort((a, b) => b.powerM2 - a.powerM2);
 
-            let best = null;
+            let bestLayout = null;
             let bestModel = null;
             let bestCoverage = 0;
             let bestOrient90 = false;
 
+            // Перебираем подходящие модели и ориентации
             for (const model of suitableModels) {
                 for (let orient90 = 0; orient90 <= 1; orient90++) {
                     const layout = calculateSectionLayout(length, width, model, !!orient90);
                     if (!checkFit(model, layout, length, width)) continue;
+                    
                     const coverage = (layout.area / totalArea) * 100;
                     const d = Math.abs(coverage - 90);
-                    if (!best || d < Math.abs(bestCoverage - 90)) {
-                        best = layout;
+                    
+                    if (!bestLayout || d < Math.abs(bestCoverage - 90)) {
+                        bestLayout = layout;
                         bestModel = model;
                         bestCoverage = coverage;
                         bestOrient90 = !!orient90;
                     }
                 }
             }
-            if (!best) return { roomId, roomName, length, width, totalArea, success: false };
+            
+            if (!bestLayout) return { roomId, roomName, length, width, totalArea, success: false };
 
-            // Итоговые данные
-            const totalPower = best.sections.length * bestModel.power;
-            const thermostatCount = Math.max(1, Math.ceil(best.area / 20));
+            // Расчет стоимости
+            const thermostatCount = Math.max(1, Math.ceil(bestLayout.area / 20));
             const thermostatPrice = 5000;
             const thermostatTotal = thermostatPrice * thermostatCount;
-            const installPrice = best.area * 1000 + thermostatCount * 3000;
-            const floorPrice = best.area * 3000;
+            const installPrice = bestLayout.area * 1000 + thermostatCount * 3000;
+            const floorPrice = bestLayout.area * 3000;
             const totalCost = installPrice + floorPrice + thermostatTotal;
 
             return {
@@ -364,17 +848,17 @@
                 width,
                 totalArea,
                 model: bestModel,
-                layout: best,
-                coverage: best.area,
+                layout: bestLayout,
+                coverage: bestLayout.area,
                 coveragePercentage: bestCoverage,
-                totalPower,
+                totalPower: bestLayout.totalPower,
                 thermostatCount,
                 thermostatPrice,
                 thermostatTotal,
                 installPrice,
                 floorPrice,
                 totalCost,
-                sectionsNeeded: best.sections.length,
+                sectionsNeeded: bestLayout.sections.length,
                 orient90: bestOrient90,
                 success: true
             };
@@ -389,17 +873,13 @@
             const roomLength = roomResult.length;
             const roomWidth = roomResult.width;
             const layout = roomResult.layout;
-            const model = roomResult.model;
 
-            const maxWidth = 400;
+            // Масштабирование для отображения
+            const maxWidth = container.offsetWidth - 20;
             const maxHeight = 280;
             const scaleX = maxWidth / roomLength;
             const scaleY = maxHeight / roomWidth;
             const scale = Math.min(scaleX, scaleY);
-
-            // Центрирование по ширине
-            const usedWidth = layout.numRows * layout.rowWidth;
-            const offsetY = ((roomWidth - usedWidth) / 2) * scaleY;
 
             // Контур помещения
             const roomElement = document.createElement('div');
@@ -413,16 +893,29 @@
             container.style.position = 'relative';
             container.appendChild(roomElement);
 
+            // Отступы от стен
+            const offsetElement = document.createElement('div');
+            offsetElement.style.position = 'absolute';
+            offsetElement.style.border = '1px dashed #ccc';
+            offsetElement.style.left = `${layout.wallOffset * scale}px`;
+            offsetElement.style.top = `${layout.wallOffset * scale}px`;
+            offsetElement.style.width = `${(roomLength - 2 * layout.wallOffset) * scale}px`;
+            offsetElement.style.height = `${(roomWidth - 2 * layout.wallOffset) * scale}px`;
+            roomElement.appendChild(offsetElement);
+
             // Секции
             layout.sections.forEach(se => {
                 const sectionDiv = document.createElement('div');
-                sectionDiv.className = 'section';
+                sectionDiv.className = `section ${se.isPartial ? 'partial' : ''}`;
                 sectionDiv.style.width = `${se.length * scale}px`;
                 sectionDiv.style.height = `${se.width * scale}px`;
                 sectionDiv.style.left = `${se.x * scale}px`;
-                sectionDiv.style.top = `${(se.y) * scaleY}px`;
-                sectionDiv.innerHTML = `<div class="sec-label">${se.n}</div>
-                    <div class="sec-size">${se.length.toFixed(2)}×${se.width.toFixed(2)}м</div>`;
+                sectionDiv.style.top = `${se.y * scale}px`;
+                sectionDiv.innerHTML = `
+                    <div class="sec-label">${se.n}${se.isPartial ? '*' : ''}</div>
+                    <div class="sec-size">${se.length.toFixed(2)}×${se.width.toFixed(2)}м</div>
+                    ${se.isPartial ? `<div style="font-size:9px;color:#e67e22;">Дробная</div>` : ''}
+                `;
                 roomElement.appendChild(sectionDiv);
             });
         }
@@ -451,6 +944,12 @@
                     return;
                 }
                 
+                if (length < 0.5 || width < 0.5) {
+                    showError(`Минимальный размер помещения - 0.5м. Проверьте ${roomName}`);
+                    hasErrors = true;
+                    return;
+                }
+                
                 const roomResult = calculateRoom(roomId, roomName, length, width, insulation);
                 roomsData.push(roomResult);
             });
@@ -469,7 +968,10 @@
             let totalPower = 0;
             let totalCost = 0;
             let totalThermostats = 0;
+            let totalSections = 0;
+            let totalPartialSections = 0;
             
+            // Считаем общие показатели
             roomsData.forEach(room => {
                 if (room.success) {
                     totalArea += room.totalArea;
@@ -477,9 +979,12 @@
                     totalPower += room.totalPower;
                     totalCost += room.totalCost;
                     totalThermostats += room.thermostatCount;
+                    totalSections += room.sectionsNeeded;
+                    totalPartialSections += room.layout.sections.filter(s => s.isPartial).length;
                 }
             });
             
+            // Результаты для каждого помещения
             roomsData.forEach((room, index) => {
                 if (!room.success) {
                     html += `
@@ -494,6 +999,9 @@
                 }
                 
                 const visualizationId = `visualization-${index}`;
+                const partialSections = room.layout.sections.filter(s => s.isPartial).length;
+                const fullSections = room.sectionsNeeded - partialSections;
+                
                 html += `
                     <div class="room-result">
                         <div class="room-result-header">${room.roomName} (${room.length}м × ${room.width}м)</div>
@@ -503,18 +1011,27 @@
                                 <div class="result-grid">
                                     <div class="result-item"><strong>Мощность на м²:</strong> ${room.model.powerM2} Вт/м²</div>
                                     <div class="result-item"><strong>Мощность секции:</strong> ${room.model.power} Вт</div>
-                                    <div class="result-item"><strong>Секций требуется:</strong> ${room.sectionsNeeded}</div>
+                                    <div class="result-item"><strong>Полных секций:</strong> ${fullSections}</div>
+                                    <div class="result-item"><strong>Дробных секций:</strong> ${partialSections}</div>
                                     <div class="result-item"><strong>Покрываемая площадь:</strong> ${room.coverage.toFixed(2)} м²</div>
-                                    <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower} Вт</div>
+                                    <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower.toFixed(0)} Вт</div>
                                     <div class="result-item"><strong>Размер секции:</strong> ${room.model.width}м × ${room.model.length}м</div>
                                     <div class="result-item"><strong>Ориентация укладки:</strong> ${room.orient90 ? "Поворот секции на 90°" : "Без поворота"}</div>
                                 </div>
                                 ${room.totalPower > 2500 ? 
                                     `<div class="power-warning">Внимание: Мощность близка к предельной. Убедитесь в надежности электропроводки и согласуйте проект с электриком.</div>` : ''
                                 }
+                                <div class="section-info">
+                                    <strong>Секции:</strong>
+                                    <div class="section-list">
+                                        ${room.layout.sections.map(s => 
+                                            `<div class="section-item">Секция ${s.n}: ${s.length.toFixed(2)}м × ${s.width.toFixed(2)}м ${s.isPartial ? '(дробная)' : ''}</div>`
+                                        ).join('')}
+                                    </div>
+                                </div>
                             </div>
                             <div class="layout-visualization">
-                                <div class="visualization-title">Схема укладки</div>
+                                <div class="visualization-title">Схема укладки (отступ от стен 10 см)</div>
                                 <div class="visualization-container" id="${visualizationId}"></div>
                                 <div class="coverage-info">
                                     Покрытие: ${room.coveragePercentage.toFixed(1)}% от общей площади помещения
@@ -525,6 +1042,7 @@
                 `;
             });
             
+            // Общий итог
             if (roomsData.some(room => room.success)) {
                 html += `
                     <div class="total-summary">
@@ -532,8 +1050,9 @@
                         <table class="summary-table">
                             <tr><th>Общая площадь помещений</th><td>${totalArea.toFixed(2)} м²</td></tr>
                             <tr><th>Общая площадь укладки</th><td>${totalCoverage.toFixed(2)} м²</td></tr>
-                            <tr><th>Общая мощность системы</th><td>${totalPower} Вт</td></tr>
+                            <tr><th>Общая мощность системы</th><td>${totalPower.toFixed(0)} Вт</td></tr>
                             <tr><th>Количество терморегуляторов</th><td>${totalThermostats} шт.</td></tr>
+                            <tr><th>Всего секций</th><td>${totalSections} шт. (${totalPartialSections} дробных)</td></tr>
                             <tr><th>Общая стоимость</th><td>${totalCost.toLocaleString('ru-RU')} руб.</td></tr>
                         </table>
                     </div>
