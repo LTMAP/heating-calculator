@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калькулятор теплого пола - Многокомнатный расчет</title>
     <style>
+        /* Стили остаются без изменений */
         :root {
             --primary: #3498db;
             --primary-dark: #2980b9;
@@ -510,6 +511,15 @@
         .section-item:last-child {
             border-bottom: none;
         }
+        
+        .fallback-info {
+            background: #e8f4f8;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-size: 14px;
+            color: var(--secondary);
+        }
     </style>
 </head>
 <body>
@@ -744,8 +754,8 @@
                         isPartial = true;
                     }
                     
-                    // Минимальная длина секции - 0.2м
-                    if (currentLength < 0.2) break;
+                    // Минимальная длина секции - 0.1м
+                    if (currentLength < 0.1) break;
                     
                     // Мощность секции пропорциональна ее длине
                     const sectionPower = model.power * (currentLength / sectionLength);
@@ -782,7 +792,7 @@
         }
 
         // Проверка соответствия модели требованиям
-        function checkFit(model, layout, roomLen, roomWid, minCoverage = 0.85) {
+        function checkFit(model, layout, roomLen, roomWid, minCoverage = 0.7) {  // Уменьшили минимальное покрытие до 70%
             if (!layout) return false;
             
             // Проверка покрытия
@@ -796,22 +806,57 @@
             return true;
         }
 
+        // Поиск подходящей модели с расширенными критериями
+        function findSuitableModel(length, width, insulation) {
+            const totalArea = length * width;
+            
+            // Определяем требования к мощности в зависимости от утепления
+            let minPower, maxPower;
+            switch(insulation) {
+                case 'low':
+                    minPower = 180; // Расширили диапазон
+                    maxPower = 500;
+                    break;
+                case 'medium':
+                    minPower = 140; // Расширили диапазон
+                    maxPower = 220;
+                    break;
+                case 'high':
+                    minPower = 120; // Расширили диапазон
+                    maxPower = 180;
+                    break;
+                default:
+                    minPower = 140;
+                    maxPower = 200;
+            }
+            
+            // Фильтрация моделей по уровню утепления
+            let suitableModels = models.filter(model => 
+                model.powerM2 >= minPower && model.powerM2 <= maxPower
+            ).sort((a, b) => b.powerM2 - a.powerM2);
+
+            // Если не найдено подходящих моделей, расширяем критерии
+            if (suitableModels.length === 0) {
+                suitableModels = models.filter(model => 
+                    model.powerM2 >= minPower * 0.8 // Еще больше расширяем диапазон
+                ).sort((a, b) => b.powerM2 - a.powerM2);
+            }
+            
+            return suitableModels;
+        }
+
         // Расчет для одного помещения
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
             
-            // Фильтрация моделей по уровню утепления
-            const suitableModels = models.filter(model => {
-                if (insulation === 'low' && model.powerM2 >= 200) return true;
-                if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
-                if (insulation === 'high' && model.powerM2 >= 140 && model.powerM2 <= 180) return true;
-                return false;
-            }).sort((a, b) => b.powerM2 - a.powerM2);
-
+            // Поиск подходящих моделей
+            const suitableModels = findSuitableModel(length, width, insulation);
+            
             let bestLayout = null;
             let bestModel = null;
             let bestCoverage = 0;
             let bestOrient90 = false;
+            let usedFallback = false;
 
             // Перебираем подходящие модели и ориентации
             for (const model of suitableModels) {
@@ -827,6 +872,27 @@
                         bestModel = model;
                         bestCoverage = coverage;
                         bestOrient90 = !!orient90;
+                    }
+                }
+            }
+            
+            // Если не нашли подходящую модель, попробуем все модели без фильтра по мощности
+            if (!bestLayout) {
+                usedFallback = true;
+                for (const model of models) {
+                    for (let orient90 = 0; orient90 <= 1; orient90++) {
+                        const layout = calculateSectionLayout(length, width, model, !!orient90);
+                        if (!checkFit(model, layout, length, width, 0.6)) continue; // Еще больше снижаем требование к покрытию
+                        
+                        const coverage = (layout.area / totalArea) * 100;
+                        const d = Math.abs(coverage - 90);
+                        
+                        if (!bestLayout || d < Math.abs(bestCoverage - 90)) {
+                            bestLayout = layout;
+                            bestModel = model;
+                            bestCoverage = coverage;
+                            bestOrient90 = !!orient90;
+                        }
                     }
                 }
             }
@@ -860,6 +926,7 @@
                 totalCost,
                 sectionsNeeded: bestLayout.sections.length,
                 orient90: bestOrient90,
+                usedFallback,
                 success: true
             };
         }
@@ -1008,6 +1075,10 @@
                         <div class="room-result-content">
                             <div class="result-card">
                                 <h4>ОПТИМАЛЬНАЯ МОДЕЛЬ: ${room.model.name}</h4>
+                                ${room.usedFallback ? 
+                                    `<div class="fallback-info">Внимание: использована модель с нестандартной мощностью для выбранного уровня утепления.</div>` : 
+                                    ''
+                                }
                                 <div class="result-grid">
                                     <div class="result-item"><strong>Мощность на м²:</strong> ${room.model.powerM2} Вт/м²</div>
                                     <div class="result-item"><strong>Мощность секции:</strong> ${room.model.power} Вт</div>
