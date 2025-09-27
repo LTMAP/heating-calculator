@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калькулятор теплого пола - Многокомнатный расчет</title>
     <style>
-        /* Стили остаются без изменений */
         :root {
             --primary: #3498db;
             --primary-dark: #2980b9;
@@ -520,6 +519,16 @@
             font-size: 14px;
             color: var(--secondary);
         }
+        
+        .min-power-info {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 10px 0;
+            border-left: 4px solid #ffc107;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -629,16 +638,16 @@
                         </div>
                         <div class="dimension">
                             <label for="${roomId}-length">Длина (м)</label>
-                            <input type="number" id="${roomId}-length" min="0.5" max="50" step="0.1" value="${4 + roomCounter * 0.5}">
+                            <input type="number" id="${roomId}-length" min="0.5" max="50" step="0.1" value="4.5">
                         </div>
                         <div class="dimension">
                             <label for="${roomId}-width">Ширина (м)</label>
-                            <input type="number" id="${roomId}-width" min="0.5" max="50" step="0.1" value="${3 + roomCounter * 0.3}">
+                            <input type="number" id="${roomId}-width" min="0.5" max="50" step="0.1" value="3.3">
                         </div>
                     </div>
                     <div class="area-info">
                         <p>Общая площадь: <span id="${roomId}-total-area">0</span> м²</p>
-                        <p>Целевая площадь (90%): <span id="${roomId}-effective-area">0</span> м²</p>
+                        <p>Минимальная мощность: <span id="${roomId}-min-power">0</span> Вт</p>
                     </div>
                 </div>
             `;
@@ -695,14 +704,14 @@
             });
         }
 
-        // Обновление площади помещения
+        // Обновление площади помещения и минимальной мощности
         function updateRoomArea(roomId) {
             const length = parseFloat(document.getElementById(`${roomId}-length`).value) || 0;
             const width = parseFloat(document.getElementById(`${roomId}-width`).value) || 0;
             const totalArea = length * width;
-            const effectiveArea = totalArea * 0.9;
+            const minPower = totalArea * 140; // Минимальная мощность 140 Вт/м²
             document.getElementById(`${roomId}-total-area`).textContent = totalArea.toFixed(2);
-            document.getElementById(`${roomId}-effective-area`).textContent = effectiveArea.toFixed(2);
+            document.getElementById(`${roomId}-min-power`).textContent = minPower.toFixed(0);
         }
 
         // Получение выбранного уровня утепления
@@ -792,7 +801,7 @@
         }
 
         // Проверка соответствия модели требованиям
-        function checkFit(model, layout, roomLen, roomWid, minCoverage = 0.7) {  // Уменьшили минимальное покрытие до 70%
+        function checkFit(model, layout, roomLen, roomWid, minCoverage = 0.7) {
             if (!layout) return false;
             
             // Проверка покрытия
@@ -802,6 +811,10 @@
             
             // Проверка максимальной мощности (3360 Вт)
             if (layout.totalPower > 3360) return false;
+            
+            // НОВОЕ: Проверка минимальной мощности (140 Вт/м² от общей площади)
+            const minRequiredPower = totalArea * 140;
+            if (layout.totalPower < minRequiredPower) return false;
             
             return true;
         }
@@ -848,6 +861,7 @@
         // Расчет для одного помещения
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
+            const minRequiredPower = totalArea * 140; // Минимальная мощность 140 Вт/м²
             
             // Поиск подходящих моделей
             const suitableModels = findSuitableModel(length, width, insulation);
@@ -897,7 +911,7 @@
                 }
             }
             
-            if (!bestLayout) return { roomId, roomName, length, width, totalArea, success: false };
+            if (!bestLayout) return { roomId, roomName, length, width, totalArea, minRequiredPower, success: false };
 
             // Расчет стоимости
             const thermostatCount = Math.max(1, Math.ceil(bestLayout.area / 20));
@@ -913,6 +927,7 @@
                 length,
                 width,
                 totalArea,
+                minRequiredPower,
                 model: bestModel,
                 layout: bestLayout,
                 coverage: bestLayout.area,
@@ -1058,7 +1073,9 @@
                         <div class="room-result">
                             <div class="room-result-header">${room.roomName} - Не найдено подходящей модели</div>
                             <div class="warning" style="margin: 15px;">
-                                Для помещения ${room.length}м × ${room.width}м не найдено подходящей модели. Попробуйте изменить размеры или параметры утепления.
+                                Для помещения ${room.length}м × ${room.width}м не найдено подходящей модели. 
+                                Требуемая минимальная мощность: ${room.minRequiredPower.toFixed(0)} Вт.
+                                Попробуйте изменить размеры или параметры утепления.
                             </div>
                         </div>
                     `;
@@ -1079,6 +1096,9 @@
                                     `<div class="fallback-info">Внимание: использована модель с нестандартной мощностью для выбранного уровня утепления.</div>` : 
                                     ''
                                 }
+                                <div class="min-power-info">
+                                    <strong>Минимальная мощность для помещения:</strong> ${room.minRequiredPower.toFixed(0)} Вт (140 Вт/м² × ${room.totalArea.toFixed(1)} м²)
+                                </div>
                                 <div class="result-grid">
                                     <div class="result-item"><strong>Мощность на м²:</strong> ${room.model.powerM2} Вт/м²</div>
                                     <div class="result-item"><strong>Мощность секции:</strong> ${room.model.power} Вт</div>
@@ -1121,6 +1141,7 @@
                         <table class="summary-table">
                             <tr><th>Общая площадь помещений</th><td>${totalArea.toFixed(2)} м²</td></tr>
                             <tr><th>Общая площадь укладки</th><td>${totalCoverage.toFixed(2)} м²</td></tr>
+                            <tr><th>Минимальная требуемая мощность</th><td>${(totalArea * 140).toFixed(0)} Вт</td></tr>
                             <tr><th>Общая мощность системы</th><td>${totalPower.toFixed(0)} Вт</td></tr>
                             <tr><th>Количество терморегуляторов</th><td>${totalThermostats} шт.</td></tr>
                             <tr><th>Всего секций</th><td>${totalSections} шт. (${totalPartialSections} дробных)</td></tr>
