@@ -482,8 +482,8 @@
         </footer>
     </div>
 
-   <script>
-    // Данные моделей (как было)
+<script>
+    // Данные моделей
     const models = [
         {name: 'ТКС-01', power: 230, powerM2: 460, area: 0.5, width: 1, length: 0.5},
         {name: 'ТКС-02', power: 180, powerM2: 360, area: 0.5, width: 1, length: 0.5},
@@ -622,35 +622,52 @@
         return Math.abs(val - Math.round(val)) < EPS;
     }
 
-    // Проверка раскладки с правилом сумм дробных частей
-    // Возвращает объект с данными раскладки, либо null если не подходит
-    function layoutFeasibility(model, roomLength, roomWidth, sectionsNeeded) {
-        // Проверяем две ориентации:
-        // A: модель длиной вдоль длины помещения (model.length -> длина)
-        // B: модель "повёрнута" (model.length вдоль ширины помещения)
+    // Проверка раскладки и соответствия правилам дробных частей для заданного S (секции)
+    function layoutFeasibilityForS(model, roomLength, roomWidth, S) {
+        // внутреняя проверка для ориентации
         function checkOrientation(lenDim, widDim, mLen, mWid, orientationName) {
-            // сколько линий (строк) по ширине помещается целиком (целые строки модулей по ширине)
             const lines = Math.floor(widDim / mWid);
             if (lines <= 0) return null;
 
-            // в каждой линии сколько целых модулей по длине помещается
             const fullPerLine = Math.floor(lenDim / mLen);
-            // остаток по длине в каждой линии
-            const leftoverPerLine = +(lenDim - fullPerLine * mLen).toFixed(6); // избавляемся от мелких погрешностей
-            // суммарный остаток (сумма дробных частей по всем линиям)
+            const leftoverPerLine = +(lenDim - fullPerLine * mLen).toFixed(6);
             const totalLeftover = +(leftoverPerLine * lines).toFixed(6);
 
-            // количество целых модулей, которые можно собрать из суммарных дробных частей
-            const combinedFromLeftovers = totalLeftover / mLen;
+            let combinedFromLeftovers = 0;
+            if (totalLeftover > EPS) {
+                const combinedExact = totalLeftover / mLen;
+                if (!isAlmostInteger(combinedExact)) {
+                    // правило: суммарный остаток должен давать целое число модулей
+                    return null;
+                }
+                combinedFromLeftovers = Math.round(combinedExact);
+            }
 
-            if (!isAlmostInteger(combinedFromLeftovers)) {
-                // правило: сумма дробных частей по всем линиям должна давать целое число модулей
+            const capacityFull = fullPerLine * lines;
+            const totalCapacity = capacityFull + combinedFromLeftovers;
+
+            if (totalCapacity < S) {
+                return null; // не вмещается
+            }
+
+            // как мы заполним: сначала целые из строк, потом — из собранных из дробных
+            const usedFull = Math.min(capacityFull, S);
+            const neededFromCombined = S - usedFull;
+            if (neededFromCombined > combinedFromLeftovers) {
+                // не хватает собранных модулей
                 return null;
             }
-            const kInt = Math.round(combinedFromLeftovers);
 
-            // общая вместимость модулей (целые в линиях + собранные из дробных частей)
-            const totalCapacity = fullPerLine * lines + kInt;
+            // распределение: целые по строкам (rowsFull, remainderInNextRow)
+            let rowsFullyFilled = 0;
+            let remainderInNextRow = 0;
+            if (fullPerLine > 0) {
+                rowsFullyFilled = Math.floor(usedFull / fullPerLine);
+                remainderInNextRow = usedFull % fullPerLine;
+            } else {
+                rowsFullyFilled = 0;
+                remainderInNextRow = 0;
+            }
 
             return {
                 orientation: orientationName,
@@ -658,31 +675,25 @@
                 fullPerLine,
                 leftoverPerLine,
                 totalLeftover,
-                combinedFromLeftovers: kInt,
-                totalCapacity
+                combinedFromLeftovers,
+                capacityFull,
+                totalCapacity,
+                usedFull,
+                neededFromCombined,
+                rowsFullyFilled,
+                remainderInNextRow
             };
         }
 
+        // проверяем обе ориентации
         const optA = checkOrientation(roomLength, roomWidth, model.length, model.width, 'alongLength');
         const optB = checkOrientation(roomLength, roomWidth, model.width, model.length, 'rotated');
-
-        // выбираем подходящую ориентацию, если есть
         const candidates = [optA, optB].filter(c => c !== null);
         if (candidates.length === 0) return null;
 
-        // выбираем ту ориентацию, где capacity >= sectionsNeeded, и минимально превышает (или просто первая)
-        let best = null;
-        for (const c of candidates) {
-            if (c.totalCapacity >= sectionsNeeded) {
-                if (!best) best = c;
-                else if (c.totalCapacity < best.totalCapacity) best = c; // предпочитаем меньшую вместимость (меньше перерасход)
-            }
-        }
-        if (!best) {
-            // если ни одна ориентация не даёт достаточной вместимости, возвращаем null
-            return null;
-        }
-        return best;
+        // вернём ту ориентацию, где суммарная вместимость минимально превышает S (экономнее)
+        candidates.sort((a, b) => (a.totalCapacity - S) - (b.totalCapacity - S));
+        return candidates[0];
     }
 
     function calculateRoom(roomId, roomName, length, width, insulation) {
@@ -690,7 +701,8 @@
         const targetArea = totalArea * 0.9;
         const minArea = totalArea * 0.85;
         const maxArea = totalArea * 1.00;
-        // фильтруем модели по диапазону мощности (вынесено прямо здесь)
+
+        // фильтр моделей по утеплению
         const suitableModels = models.filter(model => {
             if (insulation === 'low' && model.powerM2 >= 200) return true;
             if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
@@ -698,140 +710,121 @@
             return false;
         }).sort((a, b) => b.powerM2 - a.powerM2);
 
-        let optimalModel = null;
-        let optimalSections = 0;
-        let coveragePercentage = 0;
-        let closestToTarget = Infinity;
-        let chosenLayout = null;
+        let best = null;
+        let bestDeviation = Infinity;
 
         for (const model of suitableModels) {
-            // допустимое количество секций по площади
-            const minSections = Math.ceil(minArea / model.area);
-            const maxSections = Math.floor(maxArea / model.area);
-            if (maxSections < 1) continue;
-            for (let sections = minSections; sections <= maxSections; sections++) {
-                // проверяем раскладку с новым правилом (проверяем возможна ли раскладка и вместимость)
-                const layout = layoutFeasibility(model, length, width, sections);
+            const minSections = Math.max(1, Math.ceil(minArea / model.area));
+            const maxSections = Math.max(minSections, Math.floor(maxArea / model.area));
+            for (let S = minSections; S <= maxSections; S++) {
+                const layout = layoutFeasibilityForS(model, length, width, S);
                 if (!layout) continue;
-
-                const totalPower = sections * model.power;
+                const totalPower = S * model.power;
                 if (totalPower > MAX_POWER_PER_CIRCUIT) {
-                    // текущая реализация: отклоняем, если превышает предел одного контура
-                    // (можно в будущем добавить автоматическое разделение на контуры)
+                    // отклоняем (в будущем можно делить на контуры)
                     continue;
                 }
-
-                const coverage = sections * model.area;
-                const currentCoveragePercentage = (coverage / totalArea) * 100;
-                const deviationFromTarget = Math.abs(currentCoveragePercentage - 90);
-                if (deviationFromTarget < closestToTarget) {
-                    closestToTarget = deviationFromTarget;
-                    optimalModel = model;
-                    optimalSections = sections;
-                    coveragePercentage = currentCoveragePercentage;
-                    chosenLayout = layout;
+                const coverage = S * model.area;
+                const coveragePct = (coverage / totalArea) * 100;
+                const deviation = Math.abs(coveragePct - 90);
+                if (deviation < bestDeviation) {
+                    bestDeviation = deviation;
+                    best = {
+                        roomId,
+                        roomName,
+                        length,
+                        width,
+                        totalArea,
+                        model,
+                        sectionsNeeded: S,
+                        coverage,
+                        totalPower,
+                        coveragePercentage: coveragePct,
+                        powerUsage: totalArea * 20,
+                        thermostatCount: Math.max(1, Math.ceil(coverage / 20)),
+                        layout
+                    };
                 }
             }
         }
 
-        if (optimalModel && chosenLayout) {
-            const coverage = optimalSections * optimalModel.area;
-            const totalPower = optimalSections * optimalModel.power;
-            const thermostatCount = Math.max(1, Math.ceil(coverage / 20));
+        if (best) {
+            // цены и т.д. можно оставить как раньше
             const thermostatPrice = 5000;
-            const thermostatTotal = thermostatPrice * thermostatCount;
-            const installPrice = coverage * 1000 + thermostatCount * 3000;
-            const floorPrice = coverage * 3000;
+            const thermostatTotal = thermostatPrice * best.thermostatCount;
+            const installPrice = best.coverage * 1000 + best.thermostatCount * 3000;
+            const floorPrice = best.coverage * 3000;
             const totalCost = installPrice + floorPrice + thermostatTotal;
-            const powerUsage = totalArea * 20;
-            return {
-                roomId,
-                roomName,
-                length,
-                width,
-                totalArea,
-                model: optimalModel,
-                sectionsNeeded: optimalSections,
-                coverage,
-                totalPower,
-                coveragePercentage,
-                powerUsage,
-                thermostatCount,
-                thermostatPrice,
-                thermostatTotal,
-                installPrice,
-                floorPrice,
-                totalCost,
-                layoutInfo: chosenLayout,
-                success: true
-            };
+            return {...best, thermostatPrice, thermostatTotal, installPrice, floorPrice, totalCost, success: true};
         }
 
-        return {
-            roomId,
-            roomName,
-            length,
-            width,
-            totalArea,
-            success: false
-        };
+        return { roomId, roomName, length, width, totalArea, success: false };
     }
 
-    // Визуализация: теперь учитывает выбранную ориентацию и дробные части
     function visualizeLayout(roomResult, containerId) {
         const container = document.getElementById(containerId);
         container.innerHTML = '';
 
-        const roomLength = roomResult.length;
-        const roomWidth = roomResult.width;
-        const model = roomResult.model;
-        const layout = roomResult.layoutInfo;
-        if (!layout) {
-            container.innerHTML = '<div class="warning">Невозможно визуализировать: нет данных раскладки</div>';
+        if (!roomResult || !roomResult.success) {
+            container.innerHTML = '<div class="warning">Нет данных для визуализации</div>';
             return;
         }
 
-        // Масштабирование для контейнера
-        const maxWidth = 400;
-        const maxHeight = 280;
-        // при ориентации 'alongLength' модель.length вдоль длины помещения
-        let drawRoomLength = roomLength;
-        let drawRoomWidth = roomWidth;
-        let mLen = model.length;
-        let mWid = model.width;
-        if (layout.orientation === 'rotated') {
-            // модель повёрнута: длина модуля по факту = model.width
-            mLen = model.width;
-            mWid = model.length;
+        const roomLength = roomResult.length;
+        const roomWidth = roomResult.width;
+        const model = roomResult.model;
+        const layout = roomResult.layout;
+        if (!layout) {
+            container.innerHTML = '<div class="warning">Нет данных раскладки</div>';
+            return;
         }
 
-        const scaleX = maxWidth / drawRoomLength;
-        const scaleY = maxHeight / drawRoomWidth;
+        // определяем размеры модуля в текущей ориентации
+        let mLen = (layout.orientation === 'alongLength') ? model.length : model.width;
+        let mWid = (layout.orientation === 'alongLength') ? model.width : model.length;
+
+        // контейнер-визуализация: подстраиваем масштаб так, чтобы уместился сам план и "коробка" собранных модулей
+        const maxWidth = 400;
+        const maxHeight = 280;
+        // оставляем место под блок "собранные из дробных частей" (внизу)
+        const scaleX = maxWidth / roomLength;
+        const scaleY = (maxHeight * 0.78) / roomWidth;
         const scale = Math.min(scaleX, scaleY);
 
-        // Контур помещения
+        // контур помещения
         const roomElement = document.createElement('div');
         roomElement.className = 'room-outline';
-        roomElement.style.width = `${drawRoomLength * scale}px`;
-        roomElement.style.height = `${drawRoomWidth * scale}px`;
+        roomElement.style.width = `${roomLength * scale}px`;
+        roomElement.style.height = `${roomWidth * scale}px`;
         roomElement.style.left = '50%';
-        roomElement.style.top = '50%';
-        roomElement.style.transform = 'translate(-50%, -50%)';
+        roomElement.style.top = '0';
+        roomElement.style.transform = 'translateX(-50%)';
+        roomElement.style.position = 'relative';
         container.appendChild(roomElement);
 
-        // раскладка по строкам (lines) и полным секциям в строке (fullPerLine)
+        // рисуем целые секции, распределяя usedFull по строкам сверху вниз
         const lines = layout.lines;
         const fullPerLine = layout.fullPerLine;
+        const usedFull = layout.usedFull;
+        const neededFromCombined = layout.neededFromCombined;
         const leftoverPerLine = layout.leftoverPerLine;
-        const combinedFromLeftovers = layout.combinedFromLeftovers;
 
-        // центруем сетку внутри roomElement
-        // создаём секции: для каждой строки fullPerLine полных модулей и по одному дробному фрагменту (если leftoverPerLine > 0)
+        let remainingFull = usedFull;
         const rowHeight = mWid * scale;
-        for (let row = 0; row < lines; row++) {
-            const y = row * rowHeight;
-            for (let col = 0; col < fullPerLine; col++) {
-                const x = col * (mLen * scale);
+        for (let r = 0; r < lines; r++) {
+            const y = r * rowHeight;
+            let placeInRow = 0;
+            if (fullPerLine > 0) {
+                if (remainingFull >= fullPerLine) {
+                    placeInRow = fullPerLine;
+                    remainingFull -= fullPerLine;
+                } else {
+                    placeInRow = remainingFull;
+                    remainingFull = 0;
+                }
+            }
+            for (let c = 0; c < placeInRow; c++) {
+                const x = c * (mLen * scale);
                 const section = document.createElement('div');
                 section.className = 'section';
                 section.style.width = `${mLen * scale}px`;
@@ -839,42 +832,77 @@
                 section.style.left = `${x}px`;
                 section.style.top = `${y}px`;
                 section.title = `${model.name} (${mWid}м × ${mLen}м)`;
-                section.style.fontSize = '10px';
                 roomElement.appendChild(section);
             }
-            // добавить дробный фрагмент в конец строки (если есть)
+            // нарисуем дробную часть в конце строки (если есть) пунктиром
             if (leftoverPerLine > EPS) {
-                const x = fullPerLine * (mLen * scale);
+                const x = placeInRow * (mLen * scale);
                 const frac = document.createElement('div');
                 frac.className = 'section cut';
                 frac.style.width = `${leftoverPerLine * scale}px`;
                 frac.style.height = `${mWid * scale}px`;
                 frac.style.left = `${x}px`;
                 frac.style.top = `${y}px`;
-                frac.title = `Дробная часть ${leftoverPerLine.toFixed(3)}м`;
-                frac.style.fontSize = '9px';
+                frac.title = `Дробная часть ${leftoverPerLine.toFixed(3)} м`;
                 roomElement.appendChild(frac);
             }
         }
 
-        // Информация о схеме укладки
-        const layoutInfo = document.createElement('div');
-        layoutInfo.className = 'layout-info';
-        layoutInfo.innerHTML = `
-            <strong>Ориентация:</strong> ${layout.orientation === 'alongLength' ? 'Длина секции вдоль длины помещения' : 'Модуль повернут'}<br>
-            <strong>Линий (по ширине):</strong> ${lines}<br>
-            <strong>Целых секций в линии:</strong> ${fullPerLine}<br>
-            <strong>Дробных частей в линии:</strong> ${leftoverPerLine > EPS ? leftoverPerLine.toFixed(3) + ' м' : 'нет'}<br>
-            <strong>Из дробных частей собирается целых секций:</strong> ${combinedFromLeftovers} шт.
-        `;
-        container.appendChild(layoutInfo);
+        // Блок: собранные из дробных частей модули (если они используются)
+        const assemblyBox = document.createElement('div');
+        assemblyBox.style.marginTop = '8px';
+        assemblyBox.style.padding = '8px';
+        assemblyBox.style.borderRadius = '6px';
+        assemblyBox.style.background = '#f8f9fa';
+        assemblyBox.style.display = 'flex';
+        assemblyBox.style.flexDirection = 'column';
+        assemblyBox.style.alignItems = 'flex-start';
 
-        // Пояснение: сколько целых секций размещено и сколько из дробных
-        const placedFull = fullPerLine * lines;
-        const fromFrac = combinedFromLeftovers;
+        const asmTitle = document.createElement('div');
+        asmTitle.style.fontWeight = '700';
+        asmTitle.style.marginBottom = '6px';
+        asmTitle.textContent = `Собранные из дробных частей: ${layout.neededFromCombined} шт. (максимально возможно ${layout.combinedFromLeftovers})`;
+        assemblyBox.appendChild(asmTitle);
+
+        // визуализируем сами собранные модули (типа отдельные плитки)
+        const asmTilesWrap = document.createElement('div');
+        asmTilesWrap.style.display = 'flex';
+        asmTilesWrap.style.flexWrap = 'wrap';
+        asmTilesWrap.style.gap = '6px';
+        asmTilesWrap.style.alignItems = 'center';
+
+        // рисуем маленькие плитки (будут того же масштаба, что и в плане)
+        const asmToShow = layout.neededFromCombined;
+        for (let i = 0; i < asmToShow; i++) {
+            const tile = document.createElement('div');
+            tile.className = 'section';
+            tile.style.width = `${mLen * scale}px`;
+            tile.style.height = `${mWid * scale}px`;
+            tile.style.boxSizing = 'border-box';
+            tile.title = `Собранный модуль ${i+1}`;
+            asmTilesWrap.appendChild(tile);
+        }
+        assemblyBox.appendChild(asmTilesWrap);
+        container.appendChild(assemblyBox);
+
+        // Информационный блок
+        const info = document.createElement('div');
+        info.className = 'layout-info';
+        info.innerHTML = `
+            <strong>Ориентация:</strong> ${layout.orientation === 'alongLength' ? 'Длина модуля вдоль длины помещения' : 'Модуль повернут на 90°'}<br>
+            <strong>Линий (по ширине):</strong> ${layout.lines}<br>
+            <strong>Целых секций в строке:</strong> ${layout.fullPerLine}<br>
+            <strong>Размещено целых секций:</strong> ${layout.usedFull}<br>
+            <strong>Собрано из дробных частей:</strong> ${layout.neededFromCombined}<br>
+            <strong>Дробная часть в строке:</strong> ${leftoverPerLine > EPS ? leftoverPerLine.toFixed(3) + ' м' : 'нет'}
+        `;
+        container.appendChild(info);
+
+        // Поясняющий текст
         const note = document.createElement('div');
         note.className = 'coverage-info';
-        note.innerHTML = `Размещено целых секций: ${placedFull}. Дополнительно собранно из дробных частей: ${fromFrac} шт. Всего (макс): ${placedFull + fromFrac} секций.`;
+        note.style.marginTop = '6px';
+        note.innerHTML = `Пояснение: дробные участки (пунктир) в конце строк могут быть объединены между строками. Если суммарный остаток даёт целое число модулей — эти модули учитываются (показаны выше).`;
         container.appendChild(note);
     }
 
@@ -907,7 +935,6 @@
         const container = document.getElementById('results-container');
         let html = '';
 
-        // Показываем ошибки (если есть) над результатами
         if (errors.length) {
             html += `<div class="warning">${errors.join('<br>')}</div>`;
         }
@@ -926,6 +953,7 @@
                 totalThermostats += room.thermostatCount;
             }
         });
+
         roomsData.forEach((room, index) => {
             if (!room.success) {
                 html += `
@@ -968,6 +996,7 @@
                 </div>
             `;
         });
+
         if (roomsData.some(room => room.success)) {
             html += `
                 <div class="total-summary">
@@ -982,9 +1011,10 @@
                 </div>
             `;
         }
+
         container.innerHTML = html;
 
-        // Визуализации: немного задержим, чтобы DOM уже был построен
+        // визуализации
         roomsData.forEach((room, index) => {
             if (room.success) {
                 setTimeout(() => {
