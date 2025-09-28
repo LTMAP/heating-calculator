@@ -482,399 +482,524 @@
         </footer>
     </div>
 
-    <script>
-        // Данные моделей
-        const models = [
-            {name: 'ТКС-01', power: 230, powerM2: 460, area: 0.5, width: 1, length: 0.5},
-            {name: 'ТКС-02', power: 180, powerM2: 360, area: 0.5, width: 1, length: 0.5},
-            {name: 'ТКС-03', power: 180, powerM2: 250, area: 0.72, width: 1, length: 0.72},
-            {name: 'ТКС-04', power: 160, powerM2: 213, area: 0.75, width: 1, length: 0.75},
-            {name: 'ТКС-05', power: 140, powerM2: 165, area: 0.85, width: 1, length: 0.85},
-            {name: 'ТКС-06', power: 140, powerM2: 140, area: 1, width: 1, length: 1},
-            {name: 'ТКС-07', power: 100, powerM2: 71, area: 1.4, width: 1, length: 1.4},
-            {name: 'ТКС-08', power: 180, powerM2: 257, area: 0.7, width: 0.7, length: 1},
-            {name: 'ТКС-09', power: 150, powerM2: 214, area: 0.7, width: 0.7, length: 1},
-            {name: 'ТКС-10', power: 150, powerM2: 185, area: 0.81, width: 0.7, length: 1.15},
-            {name: 'ТКС-11', power: 145, powerM2: 188, area: 0.77, width: 0.7, length: 1.1},
-            {name: 'ТКС-12', power: 140, powerM2: 200, area: 0.7, width: 0.7, length: 1},
-            {name: 'ТКС-13', power: 140, powerM2: 154, area: 0.91, width: 0.7, length: 1.3},
-            {name: 'ТКС-14', power: 120, powerM2: 143, area: 0.84, width: 0.7, length: 1.2}
-        ];
+   <script>
+    // Данные моделей (как было)
+    const models = [
+        {name: 'ТКС-01', power: 230, powerM2: 460, area: 0.5, width: 1, length: 0.5},
+        {name: 'ТКС-02', power: 180, powerM2: 360, area: 0.5, width: 1, length: 0.5},
+        {name: 'ТКС-03', power: 180, powerM2: 250, area: 0.72, width: 1, length: 0.72},
+        {name: 'ТКС-04', power: 160, powerM2: 213, area: 0.75, width: 1, length: 0.75},
+        {name: 'ТКС-05', power: 140, powerM2: 165, area: 0.85, width: 1, length: 0.85},
+        {name: 'ТКС-06', power: 140, powerM2: 140, area: 1, width: 1, length: 1},
+        {name: 'ТКС-07', power: 100, powerM2: 71, area: 1.4, width: 1, length: 1.4},
+        {name: 'ТКС-08', power: 180, powerM2: 257, area: 0.7, width: 0.7, length: 1},
+        {name: 'ТКС-09', power: 150, powerM2: 214, area: 0.7, width: 0.7, length: 1},
+        {name: 'ТКС-10', power: 150, powerM2: 185, area: 0.81, width: 0.7, length: 1.15},
+        {name: 'ТКС-11', power: 145, powerM2: 188, area: 0.77, width: 0.7, length: 1.1},
+        {name: 'ТКС-12', power: 140, powerM2: 200, area: 0.7, width: 0.7, length: 1},
+        {name: 'ТКС-13', power: 140, powerM2: 154, area: 0.91, width: 0.7, length: 1.3},
+        {name: 'ТКС-14', power: 120, powerM2: 143, area: 0.84, width: 0.7, length: 1.2}
+    ];
 
-        let roomCounter = 0;
-        let roomsData = [];
+    const MAX_POWER_PER_CIRCUIT = 3360;
+    const EPS = 1e-6;
 
-        document.addEventListener('DOMContentLoaded', function() {
-            setupOptionSelection('insulation-options');
-            document.getElementById('add-room-btn').addEventListener('click', addRoom);
-            document.getElementById('calculate-btn').addEventListener('click', calculateAllRooms);
-            addRoom();
-        });
+    let roomCounter = 0;
+    let roomsData = [];
 
-        function setupOptionSelection(containerId) {
-            const options = document.querySelectorAll(`#${containerId} .option-card`);
-            options.forEach(option => {
-                option.addEventListener('click', function() {
-                    options.forEach(opt => opt.classList.remove('selected'));
-                    this.classList.add('selected');
-                });
+    document.addEventListener('DOMContentLoaded', function() {
+        setupOptionSelection('insulation-options');
+        document.getElementById('add-room-btn').addEventListener('click', addRoom);
+        document.getElementById('calculate-btn').addEventListener('click', calculateAllRooms);
+        addRoom();
+    });
+
+    function setupOptionSelection(containerId) {
+        const options = document.querySelectorAll(`#${containerId} .option-card`);
+        options.forEach(option => {
+            option.addEventListener('click', function() {
+                options.forEach(opt => opt.classList.remove('selected'));
+                this.classList.add('selected');
             });
-        }
+        });
+    }
 
-        function addRoom() {
-            roomCounter++;
-            const roomId = `room-${roomCounter}`;
-            
-            const roomHTML = `
-                <div class="room-container" id="${roomId}">
-                    <div class="room-header">
-                        <div class="room-title">Помещение ${roomCounter}</div>
-                        <button class="remove-room" onclick="removeRoom('${roomId}')">Удалить</button>
+    function addRoom() {
+        roomCounter++;
+        const roomId = `room-${roomCounter}`;
+        
+        const roomHTML = `
+            <div class="room-container" id="${roomId}">
+                <div class="room-header">
+                    <div class="room-title">Помещение ${roomCounter}</div>
+                    <button class="remove-room" onclick="removeRoom('${roomId}')">Удалить</button>
+                </div>
+                <div class="room-dimensions">
+                    <div class="dimension">
+                        <label for="${roomId}-name">Название помещения</label>
+                        <input type="text" id="${roomId}-name" value="Комната ${roomCounter}" placeholder="Например: Гостиная">
                     </div>
-                    <div class="room-dimensions">
-                        <div class="dimension">
-                            <label for="${roomId}-name">Название помещения</label>
-                            <input type="text" id="${roomId}-name" value="Комната ${roomCounter}" placeholder="Например: Гостиная">
-                        </div>
-                        <div class="dimension">
-                            <label for="${roomId}-length">Длина (м)</label>
-                            <input type="number" id="${roomId}-length" min="1" max="20" step="0.1" value="${4 + roomCounter * 0.5}">
-                        </div>
-                        <div class="dimension">
-                            <label for="${roomId}-width">Ширина (м)</label>
-                            <input type="number" id="${roomId}-width" min="1" max="20" step="0.1" value="${3 + roomCounter * 0.3}">
-                        </div>
+                    <div class="dimension">
+                        <label for="${roomId}-length">Длина (м)</label>
+                        <input type="number" id="${roomId}-length" min="0.1" max="50" step="0.1" value="${4 + roomCounter * 0.5}">
                     </div>
-                    <div class="area-info">
-                        <p>Общая площадь: <span id="${roomId}-total-area">0</span> м²</p>
-                        <p>Целевая площадь (90%): <span id="${roomId}-effective-area">0</span> м²</p>
+                    <div class="dimension">
+                        <label for="${roomId}-width">Ширина (м)</label>
+                        <input type="number" id="${roomId}-width" min="0.1" max="50" step="0.1" value="${3 + roomCounter * 0.3}">
                     </div>
                 </div>
-            `;
-            
-            document.getElementById('rooms-container').insertAdjacentHTML('beforeend', roomHTML);
-            updateRoomArea(roomId);
-            document.getElementById(`${roomId}-length`).addEventListener('input', () => updateRoomArea(roomId));
-            document.getElementById(`${roomId}-width`).addEventListener('input', () => updateRoomArea(roomId));
-        }
+                <div class="area-info">
+                    <p>Общая площадь: <span id="${roomId}-total-area">0</span> м²</p>
+                    <p>Целевая площадь (90%): <span id="${roomId}-effective-area">0</span> м²</p>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById('rooms-container').insertAdjacentHTML('beforeend', roomHTML);
+        updateRoomArea(roomId);
+        document.getElementById(`${roomId}-length`).addEventListener('input', () => updateRoomArea(roomId));
+        document.getElementById(`${roomId}-width`).addEventListener('input', () => updateRoomArea(roomId));
+    }
 
-        function removeRoom(roomId) {
-            if (document.querySelectorAll('.room-container').length <= 1) {
-                alert('Должно остаться хотя бы одно помещение');
-                return;
+    function removeRoom(roomId) {
+        if (document.querySelectorAll('.room-container').length <= 1) {
+            alert('Должно остаться хотя бы одно помещение');
+            return;
+        }
+        document.getElementById(roomId).remove();
+        renumberRooms();
+    }
+
+    function renumberRooms() {
+        const rooms = document.querySelectorAll('.room-container');
+        roomCounter = 0;
+        rooms.forEach((room, index) => {
+            roomCounter++;
+            const roomId = `room-${roomCounter}`;
+            room.id = roomId;
+            const header = room.querySelector('.room-title');
+            header.textContent = `Помещение ${roomCounter}`;
+            const nameInput = room.querySelector('input[type="text"]');
+            if (nameInput.value === `Комната ${index + 1}`) {
+                nameInput.value = `Комната ${roomCounter}`;
             }
-            document.getElementById(roomId).remove();
-            renumberRooms();
-        }
-
-        function renumberRooms() {
-            const rooms = document.querySelectorAll('.room-container');
-            roomCounter = 0;
-            rooms.forEach((room, index) => {
-                roomCounter++;
-                const roomId = `room-${roomCounter}`;
-                room.id = roomId;
-                const header = room.querySelector('.room-title');
-                header.textContent = `Помещение ${roomCounter}`;
-                const nameInput = room.querySelector('input[type="text"]');
-                if (nameInput.value === `Комната ${index + 1}`) {
-                    nameInput.value = `Комната ${roomCounter}`;
-                }
-                const removeBtn = room.querySelector('.remove-room');
-                removeBtn.setAttribute('onclick', `removeRoom('${roomId}')`);
-                const inputs = room.querySelectorAll('input');
-                inputs.forEach(input => {
-                    const oldId = input.id;
-                    const newId = oldId.replace(/room-\d+/, roomId);
-                    input.id = newId;
-                });
-                const spans = room.querySelectorAll('span');
-                spans.forEach(span => {
-                    const oldId = span.id;
-                    if (oldId) {
-                        const newId = oldId.replace(/room-\d+/, roomId);
-                        span.id = newId;
-                    }
-                });
+            const removeBtn = room.querySelector('.remove-room');
+            removeBtn.setAttribute('onclick', `removeRoom('${roomId}')`);
+            const inputs = room.querySelectorAll('input');
+            inputs.forEach(input => {
+                const oldId = input.id;
+                const newId = oldId.replace(/room-\d+/, roomId);
+                input.id = newId;
             });
-        }
+            const spans = room.querySelectorAll('span');
+            spans.forEach(span => {
+                const oldId = span.id;
+                if (oldId) {
+                    const newId = oldId.replace(/room-\d+/, roomId);
+                    span.id = newId;
+                }
+            });
+        });
+    }
 
-        function updateRoomArea(roomId) {
-            const length = parseFloat(document.getElementById(`${roomId}-length`).value) || 0;
-            const width = parseFloat(document.getElementById(`${roomId}-width`).value) || 0;
-            const totalArea = length * width;
-            const effectiveArea = totalArea * 0.9;
-            document.getElementById(`${roomId}-total-area`).textContent = totalArea.toFixed(2);
-            document.getElementById(`${roomId}-effective-area`).textContent = effectiveArea.toFixed(2);
-        }
+    function updateRoomArea(roomId) {
+        const length = parseFloat(document.getElementById(`${roomId}-length`).value) || 0;
+        const width = parseFloat(document.getElementById(`${roomId}-width`).value) || 0;
+        const totalArea = length * width;
+        const effectiveArea = totalArea * 0.9;
+        const totalSpan = document.getElementById(`${roomId}-total-area`);
+        const effSpan = document.getElementById(`${roomId}-effective-area`);
+        if (totalSpan) totalSpan.textContent = totalArea.toFixed(2);
+        if (effSpan) effSpan.textContent = effectiveArea.toFixed(2);
+    }
 
-        function getSelectedInsulation() {
-            const selected = document.querySelector('#insulation-options .option-card.selected');
-            return selected ? selected.getAttribute('data-value') : null;
-        }
+    function getSelectedInsulation() {
+        const selected = document.querySelector('#insulation-options .option-card.selected');
+        return selected ? selected.getAttribute('data-value') : null;
+    }
 
-        function checkFit(model, roomLength, roomWidth, sectionsNeeded) {
-            const maxPower = 3360;
-            const totalPower = sectionsNeeded * model.power;
-            if (totalPower > maxPower) {
-                return { fits: false, reason: `Превышена мощность (${totalPower} Вт > ${maxPower} Вт)` };
+    function isAlmostInteger(val) {
+        return Math.abs(val - Math.round(val)) < EPS;
+    }
+
+    // Проверка раскладки с правилом сумм дробных частей
+    // Возвращает объект с данными раскладки, либо null если не подходит
+    function layoutFeasibility(model, roomLength, roomWidth, sectionsNeeded) {
+        // Проверяем две ориентации:
+        // A: модель длиной вдоль длины помещения (model.length -> длина)
+        // B: модель "повёрнута" (model.length вдоль ширины помещения)
+        function checkOrientation(lenDim, widDim, mLen, mWid, orientationName) {
+            // сколько линий (строк) по ширине помещается целиком (целые строки модулей по ширине)
+            const lines = Math.floor(widDim / mWid);
+            if (lines <= 0) return null;
+
+            // в каждой линии сколько целых модулей по длине помещается
+            const fullPerLine = Math.floor(lenDim / mLen);
+            // остаток по длине в каждой линии
+            const leftoverPerLine = +(lenDim - fullPerLine * mLen).toFixed(6); // избавляемся от мелких погрешностей
+            // суммарный остаток (сумма дробных частей по всем линиям)
+            const totalLeftover = +(leftoverPerLine * lines).toFixed(6);
+
+            // количество целых модулей, которые можно собрать из суммарных дробных частей
+            const combinedFromLeftovers = totalLeftover / mLen;
+
+            if (!isAlmostInteger(combinedFromLeftovers)) {
+                // правило: сумма дробных частей по всем линиям должна давать целое число модулей
+                return null;
             }
-            const minRoomDimension = Math.min(roomLength, roomWidth);
-            if (model.width > minRoomDimension && model.length > minRoomDimension) {
-                return { fits: false, reason: `Мат слишком большой для помещения` };
-            }
-            return { fits: true, totalPower };
+            const kInt = Math.round(combinedFromLeftovers);
+
+            // общая вместимость модулей (целые в линиях + собранные из дробных частей)
+            const totalCapacity = fullPerLine * lines + kInt;
+
+            return {
+                orientation: orientationName,
+                lines,
+                fullPerLine,
+                leftoverPerLine,
+                totalLeftover,
+                combinedFromLeftovers: kInt,
+                totalCapacity
+            };
         }
 
-        function calculateRoom(roomId, roomName, length, width, insulation) {
-            const totalArea = length * width;
-            const targetArea = totalArea * 0.9;
-            const minArea = totalArea * 0.85;
-            const maxArea = totalArea * 1.00;
-            const suitableModels = models.filter(model => {
-                if (insulation === 'low' && model.powerM2 >= 200) return true;
-                if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
-                if (insulation === 'high' && model.powerM2 >= 140 && model.powerM2 <= 180) return true;
-                return false;
-            }).sort((a, b) => b.powerM2 - a.powerM2);
-            let optimalModel = null;
-            let optimalSections = 0;
-            let coveragePercentage = 0;
-            let closestToTarget = Infinity;
-            for (const model of suitableModels) {
-                const minSections = Math.ceil(minArea / model.area);
-                const maxSections = Math.floor(maxArea / model.area);
-                for (let sections = minSections; sections <= maxSections; sections++) {
-                    const coverage = sections * model.area;
-                    const fitCheck = checkFit(model, length, width, sections);
-                    if (fitCheck.fits) {
-                        const currentCoveragePercentage = (coverage / totalArea) * 100;
-                        const deviationFromTarget = Math.abs(currentCoveragePercentage - 90);
-                        if (deviationFromTarget < closestToTarget) {
-                            closestToTarget = deviationFromTarget;
-                            optimalModel = model;
-                            optimalSections = sections;
-                            coveragePercentage = currentCoveragePercentage;
-                        }
-                    }
+        const optA = checkOrientation(roomLength, roomWidth, model.length, model.width, 'alongLength');
+        const optB = checkOrientation(roomLength, roomWidth, model.width, model.length, 'rotated');
+
+        // выбираем подходящую ориентацию, если есть
+        const candidates = [optA, optB].filter(c => c !== null);
+        if (candidates.length === 0) return null;
+
+        // выбираем ту ориентацию, где capacity >= sectionsNeeded, и минимально превышает (или просто первая)
+        let best = null;
+        for (const c of candidates) {
+            if (c.totalCapacity >= sectionsNeeded) {
+                if (!best) best = c;
+                else if (c.totalCapacity < best.totalCapacity) best = c; // предпочитаем меньшую вместимость (меньше перерасход)
+            }
+        }
+        if (!best) {
+            // если ни одна ориентация не даёт достаточной вместимости, возвращаем null
+            return null;
+        }
+        return best;
+    }
+
+    function calculateRoom(roomId, roomName, length, width, insulation) {
+        const totalArea = length * width;
+        const targetArea = totalArea * 0.9;
+        const minArea = totalArea * 0.85;
+        const maxArea = totalArea * 1.00;
+        // фильтруем модели по диапазону мощности (вынесено прямо здесь)
+        const suitableModels = models.filter(model => {
+            if (insulation === 'low' && model.powerM2 >= 200) return true;
+            if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
+            if (insulation === 'high' && model.powerM2 >= 140 && model.powerM2 <= 180) return true;
+            return false;
+        }).sort((a, b) => b.powerM2 - a.powerM2);
+
+        let optimalModel = null;
+        let optimalSections = 0;
+        let coveragePercentage = 0;
+        let closestToTarget = Infinity;
+        let chosenLayout = null;
+
+        for (const model of suitableModels) {
+            // допустимое количество секций по площади
+            const minSections = Math.ceil(minArea / model.area);
+            const maxSections = Math.floor(maxArea / model.area);
+            if (maxSections < 1) continue;
+            for (let sections = minSections; sections <= maxSections; sections++) {
+                // проверяем раскладку с новым правилом (проверяем возможна ли раскладка и вместимость)
+                const layout = layoutFeasibility(model, length, width, sections);
+                if (!layout) continue;
+
+                const totalPower = sections * model.power;
+                if (totalPower > MAX_POWER_PER_CIRCUIT) {
+                    // текущая реализация: отклоняем, если превышает предел одного контура
+                    // (можно в будущем добавить автоматическое разделение на контуры)
+                    continue;
+                }
+
+                const coverage = sections * model.area;
+                const currentCoveragePercentage = (coverage / totalArea) * 100;
+                const deviationFromTarget = Math.abs(currentCoveragePercentage - 90);
+                if (deviationFromTarget < closestToTarget) {
+                    closestToTarget = deviationFromTarget;
+                    optimalModel = model;
+                    optimalSections = sections;
+                    coveragePercentage = currentCoveragePercentage;
+                    chosenLayout = layout;
                 }
             }
-            if (optimalModel) {
-                const coverage = optimalSections * optimalModel.area;
-                const totalPower = optimalSections * optimalModel.power;
-                const thermostatCount = Math.max(1, Math.ceil(coverage / 20));
-                const thermostatPrice = 5000;
-                const thermostatTotal = thermostatPrice * thermostatCount;
-                const installPrice = coverage * 1000 + thermostatCount * 3000;
-                const floorPrice = coverage * 3000;
-                const totalCost = installPrice + floorPrice + thermostatTotal;
-                const powerUsage = totalArea * 20;
-                return {
-                    roomId,
-                    roomName,
-                    length,
-                    width,
-                    totalArea,
-                    model: optimalModel,
-                    sectionsNeeded: optimalSections,
-                    coverage,
-                    totalPower,
-                    coveragePercentage,
-                    powerUsage,
-                    thermostatCount,
-                    thermostatPrice,
-                    thermostatTotal,
-                    installPrice,
-                    floorPrice,
-                    totalCost,
-                    success: true
-                };
-            }
+        }
+
+        if (optimalModel && chosenLayout) {
+            const coverage = optimalSections * optimalModel.area;
+            const totalPower = optimalSections * optimalModel.power;
+            const thermostatCount = Math.max(1, Math.ceil(coverage / 20));
+            const thermostatPrice = 5000;
+            const thermostatTotal = thermostatPrice * thermostatCount;
+            const installPrice = coverage * 1000 + thermostatCount * 3000;
+            const floorPrice = coverage * 3000;
+            const totalCost = installPrice + floorPrice + thermostatTotal;
+            const powerUsage = totalArea * 20;
             return {
                 roomId,
                 roomName,
                 length,
                 width,
                 totalArea,
-                success: false
+                model: optimalModel,
+                sectionsNeeded: optimalSections,
+                coverage,
+                totalPower,
+                coveragePercentage,
+                powerUsage,
+                thermostatCount,
+                thermostatPrice,
+                thermostatTotal,
+                installPrice,
+                floorPrice,
+                totalCost,
+                layoutInfo: chosenLayout,
+                success: true
             };
         }
 
-        // Упрощенная визуализация как для плитки/ламината
-        function visualizeLayout(roomResult, containerId) {
-            const container = document.getElementById(containerId);
-            container.innerHTML = '';
-            
-            const roomLength = roomResult.length;
-            const roomWidth = roomResult.width;
-            const model = roomResult.model;
-            const totalSections = roomResult.sectionsNeeded;
-            
-            // Масштабирование
-            const maxWidth = 400;
-            const maxHeight = 280;
-            const scaleX = maxWidth / roomLength;
-            const scaleY = maxHeight / roomWidth;
-            const scale = Math.min(scaleX, scaleY);
-            
-            // Контур помещения
-            const roomElement = document.createElement('div');
-            roomElement.className = 'room-outline';
-            roomElement.style.width = `${roomLength * scale}px`;
-            roomElement.style.height = `${roomWidth * scale}px`;
-            roomElement.style.left = '50%';
-            roomElement.style.top = '50%';
-            roomElement.style.transform = 'translate(-50%, -50%)';
-            container.appendChild(roomElement);
-            
-            // Простой расчет укладки как плитки
-            const sectionsInRow = Math.floor(roomLength / model.length);
-            const rows = Math.ceil(totalSections / sectionsInRow);
-            
-            let sectionCount = 0;
-            for (let row = 0; row < rows; row++) {
-                for (let col = 0; col < sectionsInRow; col++) {
-                    if (sectionCount >= totalSections) break;
-                    
-                    const sectionElement = document.createElement('div');
-                    sectionElement.className = 'section';
-                    sectionElement.style.width = `${model.length * scale}px`;
-                    sectionElement.style.height = `${model.width * scale}px`;
-                    sectionElement.style.left = `${col * model.length * scale}px`;
-                    sectionElement.style.top = `${row * model.width * scale}px`;
-                    sectionElement.title = `${model.name} (${model.width}м × ${model.length}м)`;
-                    
-                    // Номер секции
-                    const sectionNumber = document.createElement('div');
-                    sectionNumber.textContent = sectionCount + 1;
-                    sectionElement.appendChild(sectionNumber);
-                    
-                    roomElement.appendChild(sectionElement);
-                    sectionCount++;
-                }
-                if (sectionCount >= totalSections) break;
-            }
-            
-            // Информация о схеме укладки
-            const layoutInfo = document.createElement('div');
-            layoutInfo.className = 'layout-info';
-            layoutInfo.innerHTML = `
-                <strong>Схема укладки:</strong> ${sectionsInRow} × ${rows} (${sectionsInRow} секций в ряду, ${rows} рядов)<br>
-                <strong>Ориентация:</strong> длина секции (${model.length}м) вдоль длины помещения
-            `;
-            container.appendChild(layoutInfo);
+        return {
+            roomId,
+            roomName,
+            length,
+            width,
+            totalArea,
+            success: false
+        };
+    }
+
+    // Визуализация: теперь учитывает выбранную ориентацию и дробные части
+    function visualizeLayout(roomResult, containerId) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+
+        const roomLength = roomResult.length;
+        const roomWidth = roomResult.width;
+        const model = roomResult.model;
+        const layout = roomResult.layoutInfo;
+        if (!layout) {
+            container.innerHTML = '<div class="warning">Невозможно визуализировать: нет данных раскладки</div>';
+            return;
         }
 
-        function calculateAllRooms() {
-            const insulation = getSelectedInsulation();
-            const rooms = document.querySelectorAll('.room-container');
-            roomsData = [];
-            if (rooms.length === 0) {
-                showError('Добавьте хотя бы одно помещение');
+        // Масштабирование для контейнера
+        const maxWidth = 400;
+        const maxHeight = 280;
+        // при ориентации 'alongLength' модель.length вдоль длины помещения
+        let drawRoomLength = roomLength;
+        let drawRoomWidth = roomWidth;
+        let mLen = model.length;
+        let mWid = model.width;
+        if (layout.orientation === 'rotated') {
+            // модель повёрнута: длина модуля по факту = model.width
+            mLen = model.width;
+            mWid = model.length;
+        }
+
+        const scaleX = maxWidth / drawRoomLength;
+        const scaleY = maxHeight / drawRoomWidth;
+        const scale = Math.min(scaleX, scaleY);
+
+        // Контур помещения
+        const roomElement = document.createElement('div');
+        roomElement.className = 'room-outline';
+        roomElement.style.width = `${drawRoomLength * scale}px`;
+        roomElement.style.height = `${drawRoomWidth * scale}px`;
+        roomElement.style.left = '50%';
+        roomElement.style.top = '50%';
+        roomElement.style.transform = 'translate(-50%, -50%)';
+        container.appendChild(roomElement);
+
+        // раскладка по строкам (lines) и полным секциям в строке (fullPerLine)
+        const lines = layout.lines;
+        const fullPerLine = layout.fullPerLine;
+        const leftoverPerLine = layout.leftoverPerLine;
+        const combinedFromLeftovers = layout.combinedFromLeftovers;
+
+        // центруем сетку внутри roomElement
+        // создаём секции: для каждой строки fullPerLine полных модулей и по одному дробному фрагменту (если leftoverPerLine > 0)
+        const rowHeight = mWid * scale;
+        for (let row = 0; row < lines; row++) {
+            const y = row * rowHeight;
+            for (let col = 0; col < fullPerLine; col++) {
+                const x = col * (mLen * scale);
+                const section = document.createElement('div');
+                section.className = 'section';
+                section.style.width = `${mLen * scale}px`;
+                section.style.height = `${mWid * scale}px`;
+                section.style.left = `${x}px`;
+                section.style.top = `${y}px`;
+                section.title = `${model.name} (${mWid}м × ${mLen}м)`;
+                section.style.fontSize = '10px';
+                roomElement.appendChild(section);
+            }
+            // добавить дробный фрагмент в конец строки (если есть)
+            if (leftoverPerLine > EPS) {
+                const x = fullPerLine * (mLen * scale);
+                const frac = document.createElement('div');
+                frac.className = 'section cut';
+                frac.style.width = `${leftoverPerLine * scale}px`;
+                frac.style.height = `${mWid * scale}px`;
+                frac.style.left = `${x}px`;
+                frac.style.top = `${y}px`;
+                frac.title = `Дробная часть ${leftoverPerLine.toFixed(3)}м`;
+                frac.style.fontSize = '9px';
+                roomElement.appendChild(frac);
+            }
+        }
+
+        // Информация о схеме укладки
+        const layoutInfo = document.createElement('div');
+        layoutInfo.className = 'layout-info';
+        layoutInfo.innerHTML = `
+            <strong>Ориентация:</strong> ${layout.orientation === 'alongLength' ? 'Длина секции вдоль длины помещения' : 'Модуль повернут'}<br>
+            <strong>Линий (по ширине):</strong> ${lines}<br>
+            <strong>Целых секций в линии:</strong> ${fullPerLine}<br>
+            <strong>Дробных частей в линии:</strong> ${leftoverPerLine > EPS ? leftoverPerLine.toFixed(3) + ' м' : 'нет'}<br>
+            <strong>Из дробных частей собирается целых секций:</strong> ${combinedFromLeftovers} шт.
+        `;
+        container.appendChild(layoutInfo);
+
+        // Пояснение: сколько целых секций размещено и сколько из дробных
+        const placedFull = fullPerLine * lines;
+        const fromFrac = combinedFromLeftovers;
+        const note = document.createElement('div');
+        note.className = 'coverage-info';
+        note.innerHTML = `Размещено целых секций: ${placedFull}. Дополнительно собранно из дробных частей: ${fromFrac} шт. Всего (макс): ${placedFull + fromFrac} секций.`;
+        container.appendChild(note);
+    }
+
+    function calculateAllRooms() {
+        const insulation = getSelectedInsulation();
+        const rooms = document.querySelectorAll('.room-container');
+        roomsData = [];
+        const errors = [];
+        if (rooms.length === 0) {
+            showError('Добавьте хотя бы одно помещение');
+            return;
+        }
+        rooms.forEach(room => {
+            const roomId = room.id;
+            const roomName = document.getElementById(`${roomId}-name`).value || `Помещение ${roomId}`;
+            const length = parseFloat(document.getElementById(`${roomId}-length`).value);
+            const width = parseFloat(document.getElementById(`${roomId}-width`).value);
+            if (!length || !width || length <= 0 || width <= 0) {
+                errors.push(`Заполните корректные размеры для ${roomName}`);
+                // пропускаем это помещение, но считаем остальные
                 return;
             }
-            rooms.forEach(room => {
-                const roomId = room.id;
-                const roomName = document.getElementById(`${roomId}-name`).value || `Помещение ${roomId}`;
-                const length = parseFloat(document.getElementById(`${roomId}-length`).value);
-                const width = parseFloat(document.getElementById(`${roomId}-width`).value);
-                if (!length || !width) {
-                    showError(`Заполните размеры для ${roomName}`);
-                    return;
-                }
-                const roomResult = calculateRoom(roomId, roomName, length, width, insulation);
-                roomsData.push(roomResult);
-            });
-            displayAllResults(roomsData);
+            const roomResult = calculateRoom(roomId, roomName, length, width, insulation);
+            roomsData.push(roomResult);
+        });
+        displayAllResults(roomsData, errors);
+    }
+
+    function displayAllResults(roomsData, errors = []) {
+        const container = document.getElementById('results-container');
+        let html = '';
+
+        // Показываем ошибки (если есть) над результатами
+        if (errors.length) {
+            html += `<div class="warning">${errors.join('<br>')}</div>`;
         }
 
-        function displayAllResults(roomsData) {
-            const container = document.getElementById('results-container');
-            let html = '';
-            let totalArea = 0;
-            let totalCoverage = 0;
-            let totalPower = 0;
-            let totalCost = 0;
-            let totalThermostats = 0;
-            roomsData.forEach(room => {
-                if (room.success) {
-                    totalArea += room.totalArea;
-                    totalCoverage += room.coverage;
-                    totalPower += room.totalPower;
-                    totalCost += room.totalCost;
-                    totalThermostats += room.thermostatCount;
-                }
-            });
-            roomsData.forEach((room, index) => {
-                if (!room.success) {
-                    html += `
-                        <div class="room-result">
-                            <div class="room-result-header">${room.roomName} - Не найдено подходящей модели</div>
-                            <div class="warning" style="margin: 15px;">
-                                Для помещения ${room.length}м × ${room.width}м не найдено подходящей модели. Попробуйте изменить размеры или параметры утепления.
-                            </div>
-                        </div>
-                    `;
-                    return;
-                }
-                const visualizationId = `visualization-${index}`;
+        let totalArea = 0;
+        let totalCoverage = 0;
+        let totalPower = 0;
+        let totalCost = 0;
+        let totalThermostats = 0;
+        roomsData.forEach(room => {
+            if (room.success) {
+                totalArea += room.totalArea;
+                totalCoverage += room.coverage;
+                totalPower += room.totalPower;
+                totalCost += room.totalCost;
+                totalThermostats += room.thermostatCount;
+            }
+        });
+        roomsData.forEach((room, index) => {
+            if (!room.success) {
                 html += `
                     <div class="room-result">
-                        <div class="room-result-header">${room.roomName} (${room.length}м × ${room.width}м)</div>
-                        <div class="room-result-content">
-                            <div class="result-card">
-                                <h4>ОПТИМАЛЬНАЯ МОДЕЛЬ: ${room.model.name}</h4>
-                                <div class="result-grid">
-                                    <div class="result-item"><strong>Мощность на м²:</strong> ${room.model.powerM2} Вт/м²</div>
-                                    <div class="result-item"><strong>Мощность секции:</strong> ${room.model.power} Вт</div>
-                                    <div class="result-item"><strong>Секций требуется:</strong> ${room.sectionsNeeded} шт.</div>
-                                    <div class="result-item"><strong>Покрываемая площадь:</strong> ${room.coverage.toFixed(2)} м²</div>
-                                    <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower} Вт</div>
-                                    <div class="result-item"><strong>Размер секции:</strong> ${room.model.width}м × ${room.model.length}м</div>
-                                </div>
-                                ${room.totalPower > 2500 ? 
-                                    `<div class="power-warning">Внимание: Мощность близка к предельной. Убедитесь в надежности электропроводки и согласуйте проект с электриком.</div>` : ''
-                                }
-                            </div>
-                            <div class="layout-visualization">
-                                <div class="visualization-title">Схема укладки</div>
-                                <div class="visualization-container" id="${visualizationId}"></div>
-                                <div class="coverage-info">
-                                    Покрытие: ${room.coveragePercentage.toFixed(1)}% от общей площади помещения
-                                </div>
-                            </div>
+                        <div class="room-result-header">${room.roomName} - Не найдено подходящей модели</div>
+                        <div class="warning" style="margin: 15px;">
+                            Для помещения ${room.length}м × ${room.width}м не найдено подходящей модели по выбранным условиям (диапазон мощности / правило дробных частей). Попробуйте изменить параметры утепления или площадь.
                         </div>
                     </div>
                 `;
-            });
-            if (roomsData.some(room => room.success)) {
-                html += `
-                    <div class="total-summary">
-                        <h3>ОБЩИЙ ИТОГ ПО ВСЕМУ ЗДАНИЮ</h3>
-                        <table class="summary-table">
-                            <tr><th>Общая площадь помещений</th><td>${totalArea.toFixed(2)} м²</td></tr>
-                            <tr><th>Общая площадь укладки</th><td>${totalCoverage.toFixed(2)} м²</td></tr>
-                            <tr><th>Общая мощность системы</th><td>${totalPower} Вт</td></tr>
-                            <tr><th>Количество терморегуляторов</th><td>${totalThermostats} шт.</td></tr>
-                            <tr><th>Общая стоимость</th><td>${totalCost.toLocaleString('ru-RU')} руб.</td></tr>
-                        </table>
-                    </div>
-                `;
+                return;
             }
-            container.innerHTML = html;
-            roomsData.forEach((room, index) => {
-                if (room.success) {
-                    setTimeout(() => {
-                        visualizeLayout(room, `visualization-${index}`);
-                    }, 100);
-                }
-            });
+            const visualizationId = `visualization-${index}`;
+            html += `
+                <div class="room-result">
+                    <div class="room-result-header">${room.roomName} (${room.length}м × ${room.width}м)</div>
+                    <div class="room-result-content">
+                        <div class="result-card">
+                            <h4>ОПТИМАЛЬНАЯ МОДЕЛЬ: ${room.model.name}</h4>
+                            <div class="result-grid">
+                                <div class="result-item"><strong>Мощность на м²:</strong> ${room.model.powerM2} Вт/м²</div>
+                                <div class="result-item"><strong>Мощность секции:</strong> ${room.model.power} Вт</div>
+                                <div class="result-item"><strong>Секций требуется:</strong> ${room.sectionsNeeded} шт.</div>
+                                <div class="result-item"><strong>Покрываемая площадь:</strong> ${room.coverage.toFixed(2)} м²</div>
+                                <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower} Вт</div>
+                                <div class="result-item"><strong>Размер секции:</strong> ${room.model.width}м × ${room.model.length}м</div>
+                            </div>
+                            ${room.totalPower > 2500 ? 
+                                `<div class="power-warning">Внимание: Мощность близка к предельной. Убедитесь в надежности электропроводки и согласуйте проект с электриком.</div>` : ''
+                            }
+                        </div>
+                        <div class="layout-visualization">
+                            <div class="visualization-title">Схема укладки</div>
+                            <div class="visualization-container" id="${visualizationId}"></div>
+                            <div class="coverage-info">
+                                Покрытие: ${room.coveragePercentage.toFixed(1)}% от общей площади помещения
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        if (roomsData.some(room => room.success)) {
+            html += `
+                <div class="total-summary">
+                    <h3>ОБЩИЙ ИТОГ ПО ВСЕМУ ЗДАНИЮ</h3>
+                    <table class="summary-table">
+                        <tr><th>Общая площадь помещений</th><td>${totalArea.toFixed(2)} м²</td></tr>
+                        <tr><th>Общая площадь укладки</th><td>${totalCoverage.toFixed(2)} м²</td></tr>
+                        <tr><th>Общая мощность системы</th><td>${totalPower} Вт</td></tr>
+                        <tr><th>Количество терморегуляторов</th><td>${totalThermostats} шт.</td></tr>
+                        <tr><th>Общая стоимость</th><td>${totalCost.toLocaleString('ru-RU')} руб.</td></tr>
+                    </table>
+                </div>
+            `;
         }
+        container.innerHTML = html;
 
-        function showError(message) {
-            const container = document.getElementById('results-container');
-            container.innerHTML = `<div class="warning">${message}</div>`;
-        }
-    </script>
-</body>
+        // Визуализации: немного задержим, чтобы DOM уже был построен
+        roomsData.forEach((room, index) => {
+            if (room.success) {
+                setTimeout(() => {
+                    visualizeLayout(room, `visualization-${index}`);
+                }, 60);
+            }
+        });
+    }
+
+    function showError(message) {
+        const container = document.getElementById('results-container');
+        container.innerHTML = `<div class="warning">${message}</div>`;
+    }
+</script>
+            
+
+        
 </html>
