@@ -223,6 +223,7 @@
             cursor: pointer;
             transition: background 0.3s;
             margin: 20px 0;
+            display: none;
         }
         
         .download-btn:hover {
@@ -496,7 +497,7 @@
                 <!-- Результаты появятся здесь -->
             </div>
 
-            <button class="download-btn" id="download-pdf-btn" style="display: none;">Скачать расчет (PDF)</button>
+            <button class="download-btn" id="download-pdf-btn">Скачать расчет (PDF)</button>
         </div>
         
         <footer>
@@ -640,7 +641,7 @@
             return selected ? selected.getAttribute('data-value') : null;
         }
 
-        // Новый алгоритм расчета с ориентацией по ширине помещения
+        // Улучшенный алгоритм расчета с одинаковым количеством секций в каждой линии
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
             const targetArea = totalArea * 0.9;
@@ -660,6 +661,8 @@
             let bestCoverage = 0;
             let bestDeviation = Infinity;
             let bestOrientation = 'width'; // 'width' или 'length'
+            let bestSectionsPerRow = 0;
+            let bestRows = 0;
 
             for (const model of suitableModels) {
                 // Определяем, какая ориентация лучше - по ширине или по длине
@@ -672,29 +675,41 @@
                     // Проверяем, помещается ли секция по ширине
                     if (orientation.sectionWidth > width) continue;
 
-                    // Рассчитываем количество секций в ряду и количество рядов
-                    const sectionsInRow = Math.floor(width / orientation.sectionWidth);
-                    const rows = Math.ceil(targetArea / (sectionsInRow * model.area));
+                    // Рассчитываем максимальное количество секций в ряду
+                    const maxSectionsInRow = Math.floor(width / orientation.sectionWidth);
                     
-                    const sections = sectionsInRow * rows;
-                    const coverage = sections * model.area;
-                    const totalPower = sections * model.power;
-                    
-                    // Проверяем мощность
-                    if (totalPower > MAX_POWER_PER_CIRCUIT) continue;
-                    
-                    // Проверяем, что маты физически помещаются в комнату
-                    if (rows * orientation.sectionLength > length) continue;
-                    
-                    const coveragePct = (coverage / totalArea) * 100;
-                    const deviation = Math.abs(coveragePct - 90);
-                    
-                    if (deviation < bestDeviation) {
-                        bestDeviation = deviation;
-                        bestModel = model;
-                        bestSections = sections;
-                        bestCoverage = coverage;
-                        bestOrientation = orientation.type;
+                    // Перебираем возможное количество секций в ряду (от 1 до максимума)
+                    for (let sectionsInRow = 1; sectionsInRow <= maxSectionsInRow; sectionsInRow++) {
+                        // Рассчитываем количество рядов для достижения целевой площади
+                        const requiredArea = targetArea;
+                        const sectionsPerRowArea = sectionsInRow * model.area;
+                        const rows = Math.ceil(requiredArea / sectionsPerRowArea);
+                        
+                        // Проверяем, что ряды помещаются по длине
+                        if (rows * orientation.sectionLength > length) continue;
+                        
+                        const sections = sectionsInRow * rows;
+                        const coverage = sections * model.area;
+                        const totalPower = sections * model.power;
+                        
+                        // Проверяем мощность
+                        if (totalPower > MAX_POWER_PER_CIRCUIT) continue;
+                        
+                        // Проверяем, что покрытие в пределах допустимого
+                        if (coverage < minArea || coverage > maxArea) continue;
+                        
+                        const coveragePct = (coverage / totalArea) * 100;
+                        const deviation = Math.abs(coveragePct - 90);
+                        
+                        if (deviation < bestDeviation) {
+                            bestDeviation = deviation;
+                            bestModel = model;
+                            bestSections = sections;
+                            bestCoverage = coverage;
+                            bestOrientation = orientation.type;
+                            bestSectionsPerRow = sectionsInRow;
+                            bestRows = rows;
+                        }
                     }
                 }
             }
@@ -727,6 +742,8 @@
                     floorPrice,
                     totalCost,
                     orientation: bestOrientation,
+                    sectionsPerRow: bestSectionsPerRow,
+                    rows: bestRows,
                     success: true
                 };
             }
@@ -734,7 +751,7 @@
             return { roomId, roomName, length, width, totalArea, success: false };
         }
 
-        // Визуализация с учетом ориентации
+        // Визуализация с одинаковым количеством секций в каждой линии
         function visualizeLayout(roomResult, containerId) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -749,6 +766,8 @@
             const model = roomResult.model;
             const totalSections = roomResult.sectionsNeeded;
             const orientation = roomResult.orientation;
+            const sectionsPerRow = roomResult.sectionsPerRow;
+            const rows = roomResult.rows;
 
             // Масштабирование
             const maxWidth = 400;
@@ -777,22 +796,25 @@
                 sectionLength = model.width;
             }
 
-            // Рассчитываем количество секций в ряду и количество рядов
-            const sectionsInRow = Math.floor(roomWidth / sectionWidth);
-            const rows = Math.ceil(totalSections / sectionsInRow);
+            // Рассчитываем отступы для центрирования
+            const totalWidth = sectionsPerRow * sectionWidth;
+            const startX = (roomWidth - totalWidth) / 2;
+            
+            const totalLength = rows * sectionLength;
+            const startY = (roomLength - totalLength) / 2;
 
             // Рисуем секции
             let sectionCount = 0;
             for (let row = 0; row < rows; row++) {
-                for (let col = 0; col < sectionsInRow; col++) {
+                for (let col = 0; col < sectionsPerRow; col++) {
                     if (sectionCount >= totalSections) break;
                     
                     const sectionElement = document.createElement('div');
                     sectionElement.className = 'section';
                     sectionElement.style.width = `${sectionWidth * scale}px`;
                     sectionElement.style.height = `${sectionLength * scale}px`;
-                    sectionElement.style.left = `${col * sectionWidth * scale}px`;
-                    sectionElement.style.top = `${row * sectionLength * scale}px`;
+                    sectionElement.style.left = `${startX * scale + col * sectionWidth * scale}px`;
+                    sectionElement.style.top = `${startY * scale + row * sectionLength * scale}px`;
                     sectionElement.title = `${model.name} (${sectionWidth}м × ${sectionLength}м)`;
                     
                     // Номер секции
@@ -810,7 +832,7 @@
             const layoutInfo = document.createElement('div');
             layoutInfo.className = 'layout-info';
             layoutInfo.innerHTML = `
-                <strong>Схема укладки:</strong> ${sectionsInRow} × ${rows} (${sectionsInRow} секций в ряду, ${rows} рядов)<br>
+                <strong>Схема укладки:</strong> ${sectionsPerRow} × ${rows} (${sectionsPerRow} секций в каждом ряду, ${rows} рядов)<br>
                 <strong>Ориентация:</strong> ${orientation === 'width' ? 'Ширина модуля вдоль ширины помещения' : 'Модуль повернут на 90°'}<br>
                 <strong>Размер секции:</strong> ${sectionWidth}м × ${sectionLength}м
             `;
@@ -898,6 +920,7 @@
                                     <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower} Вт</div>
                                     <div class="result-item"><strong>Размер секции:</strong> ${room.model.width}м × ${room.model.length}м</div>
                                     <div class="result-item"><strong>Ориентация:</strong> ${room.orientation === 'width' ? 'По ширине' : 'По длине'}</div>
+                                    <div class="result-item"><strong>Схема укладки:</strong> ${room.sectionsPerRow} × ${room.rows}</div>
                                 </div>
                                 ${room.totalPower > 2500 ? 
                                     `<div class="power-warning">Внимание: Мощность близка к предельной. Убедитесь в надежности электропроводки.</div>` : ''
@@ -1008,6 +1031,8 @@
                 doc.text(`Мощность: ${room.totalPower} Вт`, 14, yPosition);
                 yPosition += 5;
                 doc.text(`Ориентация: ${room.orientation === 'width' ? 'По ширине' : 'По длине'}`, 14, yPosition);
+                yPosition += 5;
+                doc.text(`Схема укладки: ${room.sectionsPerRow} × ${room.rows}`, 14, yPosition);
                 yPosition += 5;
                 
                 // Стоимость
