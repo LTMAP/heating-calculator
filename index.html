@@ -328,11 +328,17 @@
             font-size: 10px;
             color: #c0392b;
             box-sizing: border-box;
+            flex-direction: column;
         }
         
         .section.cut {
             background: rgba(231, 76, 60, 0.1);
             border-style: dashed;
+        }
+        
+        .section-size {
+            font-size: 8px;
+            margin-top: 2px;
         }
         
         .layout-info {
@@ -391,15 +397,6 @@
             margin: 10px 0;
             font-size: 14px;
             text-align: center;
-        }
-        
-        .summary-result {
-            background: #e0f9e8;
-            border: 1px solid #27ae60;
-            border-radius: 8px;
-            margin-top: 15px;
-            padding: 15px;
-            font-size: 18px;
         }
         
         .total-summary {
@@ -641,7 +638,7 @@
             return selected ? selected.getAttribute('data-value') : null;
         }
 
-        // УПРОЩЕННЫЙ алгоритм расчета - только мощность и ширина
+        // УЛУЧШЕННЫЙ алгоритм расчета с обрезкой секций
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
             
@@ -664,13 +661,13 @@
             // Фильтруем модели по мощности (не менее требуемой)
             const suitableModels = models.filter(model => model.powerM2 >= requiredPower);
             
-            // Сортируем по ширине (от меньшей к большей) для лучшего заполнения
-            suitableModels.sort((a, b) => a.width - b.width);
-
             let bestModel = null;
             let bestCoverage = 0;
             let bestSections = 0;
             let bestOrientation = 'width';
+            let bestLayout = [];
+            let bestSectionsPerRow = 0;
+            let bestRows = 0;
 
             for (const model of suitableModels) {
                 // Пробуем обе ориентации
@@ -680,33 +677,78 @@
                 ];
 
                 for (const orientation of orientations) {
-                    // Проверяем, что секция помещается по ширине (единственное ограничение)
+                    // Проверяем, что секция помещается по ширине
                     if (orientation.sectionWidth > width) continue;
 
                     // Рассчитываем количество секций в ряду
                     const sectionsInRow = Math.floor(width / orientation.sectionWidth);
                     
-                    // Рассчитываем длину ряда (может быть любой, обрежем если нужно)
-                    const rowLength = sectionsInRow * orientation.sectionLength;
+                    // Рассчитываем количество рядов с учетом обрезки
+                    const maxRows = Math.ceil(length / orientation.sectionLength);
                     
-                    // Количество рядов - покрываем всю длину помещения
-                    const rows = Math.ceil(length / orientation.sectionLength);
+                    let totalSections = 0;
+                    let totalCoverage = 0;
+                    const layout = [];
                     
-                    const totalSections = sectionsInRow * rows;
-                    const coverage = totalSections * model.area;
+                    // Заполняем помещение секциями с обрезкой
+                    for (let row = 0; row < maxRows; row++) {
+                        const rowSections = [];
+                        for (let col = 0; col < sectionsInRow; col++) {
+                            // Проверяем, не выходит ли секция за границы по длине
+                            const remainingLength = length - (row * orientation.sectionLength);
+                            let sectionLength = orientation.sectionLength;
+                            let isCut = false;
+                            
+                            if (remainingLength < orientation.sectionLength) {
+                                sectionLength = remainingLength;
+                                isCut = true;
+                            }
+                            
+                            // Если секция полностью выходит за границы, пропускаем
+                            if (sectionLength <= 0) continue;
+                            
+                            const sectionArea = orientation.sectionWidth * sectionLength;
+                            totalCoverage += sectionArea;
+                            totalSections++;
+                            
+                            rowSections.push({
+                                col,
+                                row,
+                                width: orientation.sectionWidth,
+                                length: sectionLength,
+                                isCut,
+                                area: sectionArea
+                            });
+                        }
+                        if (rowSections.length > 0) {
+                            layout.push(rowSections);
+                        }
+                    }
                     
-                    // Выбираем модель с максимальным покрытием
-                    if (coverage > bestCoverage) {
-                        bestCoverage = coverage;
+                    // Выбираем вариант с максимальным покрытием
+                    if (totalCoverage > bestCoverage) {
+                        bestCoverage = totalCoverage;
                         bestModel = model;
                         bestSections = totalSections;
                         bestOrientation = orientation.type;
+                        bestLayout = layout;
+                        bestSectionsPerRow = sectionsInRow;
+                        bestRows = layout.length;
                     }
                 }
             }
 
             if (bestModel) {
-                const totalPower = bestSections * bestModel.power;
+                // Пересчитываем мощность с учетом обрезки секций
+                let totalPower = 0;
+                bestLayout.forEach(row => {
+                    row.forEach(section => {
+                        // Мощность пропорциональна площади
+                        const powerRatio = section.area / (bestModel.width * bestModel.length);
+                        totalPower += bestModel.power * powerRatio;
+                    });
+                });
+                
                 const coveragePercentage = (bestCoverage / totalArea) * 100;
                 
                 // Расчет терморегуляторов (3360Вт на 1 терморегулятор)
@@ -716,16 +758,6 @@
                 const installPrice = bestCoverage * 1000 + thermostatCount * 3000;
                 const floorPrice = bestCoverage * 3000;
                 const totalCost = installPrice + floorPrice + thermostatTotal;
-                
-                // Расчет схемы укладки
-                let sectionsPerRow, rows;
-                if (bestOrientation === 'width') {
-                    sectionsPerRow = Math.floor(width / bestModel.width);
-                    rows = Math.ceil(length / bestModel.length);
-                } else {
-                    sectionsPerRow = Math.floor(width / bestModel.length);
-                    rows = Math.ceil(length / bestModel.width);
-                }
                 
                 return {
                     roomId,
@@ -746,8 +778,9 @@
                     floorPrice,
                     totalCost,
                     orientation: bestOrientation,
-                    sectionsPerRow,
-                    rows,
+                    sectionsPerRow: bestSectionsPerRow,
+                    rows: bestRows,
+                    layout: bestLayout,
                     success: true
                 };
             }
@@ -755,7 +788,7 @@
             return { roomId, roomName, length, width, totalArea, success: false };
         }
 
-        // Визуализация - теперь длина может выходить за границы (обрезается)
+        // УЛУЧШЕННАЯ визуализация с четкими границами помещения
         function visualizeLayout(roomResult, containerId) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -767,10 +800,7 @@
 
             const roomLength = roomResult.length;
             const roomWidth = roomResult.width;
-            const model = roomResult.model;
-            const orientation = roomResult.orientation;
-            const sectionsPerRow = roomResult.sectionsPerRow;
-            const rows = roomResult.rows;
+            const layout = roomResult.layout;
 
             // Масштабирование
             const maxWidth = 400;
@@ -779,7 +809,7 @@
             const scaleY = maxHeight / roomWidth;
             const scale = Math.min(scaleX, scaleY);
 
-            // Контур помещения
+            // Контур помещения - теперь с четкими границами
             const roomElement = document.createElement('div');
             roomElement.className = 'room-outline';
             roomElement.style.width = `${roomLength * scale}px`;
@@ -787,54 +817,44 @@
             roomElement.style.left = '50%';
             roomElement.style.top = '50%';
             roomElement.style.transform = 'translate(-50%, -50%)';
+            roomElement.style.border = '2px solid #3498db';
+            roomElement.style.backgroundColor = 'rgba(52, 152, 219, 0.05)';
             container.appendChild(roomElement);
 
-            // Определяем размеры секции в зависимости от ориентации
-            let sectionWidth, sectionLength;
-            if (orientation === 'width') {
-                sectionWidth = model.width;
-                sectionLength = model.length;
-            } else {
-                sectionWidth = model.length;
-                sectionLength = model.width;
-            }
-
-            // Рисуем секции (теперь могут выходить за границы)
+            // Рисуем секции согласно рассчитанной схеме
             let sectionCount = 0;
-            for (let row = 0; row < rows; row++) {
-                for (let col = 0; col < sectionsPerRow; col++) {
+            layout.forEach((row, rowIndex) => {
+                row.forEach(section => {
                     const sectionElement = document.createElement('div');
-                    sectionElement.className = 'section';
-                    sectionElement.style.width = `${sectionWidth * scale}px`;
-                    sectionElement.style.height = `${sectionLength * scale}px`;
-                    sectionElement.style.left = `${col * sectionWidth * scale}px`;
-                    sectionElement.style.top = `${row * sectionLength * scale}px`;
-                    sectionElement.title = `${model.name} (${sectionWidth}м × ${sectionLength}м)`;
+                    sectionElement.className = section.isCut ? 'section cut' : 'section';
+                    sectionElement.style.width = `${section.width * scale}px`;
+                    sectionElement.style.height = `${section.length * scale}px`;
+                    sectionElement.style.left = `${section.col * section.width * scale}px`;
+                    sectionElement.style.top = `${rowIndex * section.length * scale}px`;
                     
-                    // Помечаем секции, которые выходят за границы
-                    const isOutOfBounds = (col * sectionWidth >= roomWidth) || (row * sectionLength >= roomLength);
-                    if (isOutOfBounds) {
-                        sectionElement.classList.add('cut');
-                    }
-                    
-                    // Номер секции
+                    // Номер секции и размер
                     const sectionNumber = document.createElement('div');
                     sectionNumber.textContent = sectionCount + 1;
                     sectionElement.appendChild(sectionNumber);
                     
+                    const sectionSize = document.createElement('div');
+                    sectionSize.className = 'section-size';
+                    sectionSize.textContent = `${section.width.toFixed(1)}×${section.length.toFixed(1)}м`;
+                    sectionElement.appendChild(sectionSize);
+                    
                     roomElement.appendChild(sectionElement);
                     sectionCount++;
-                }
-            }
+                });
+            });
 
             // Информация о схеме укладки
             const layoutInfo = document.createElement('div');
             layoutInfo.className = 'layout-info';
             layoutInfo.innerHTML = `
-                <strong>Схема укладки:</strong> ${sectionsPerRow} × ${rows} (${sectionsPerRow} секций в каждом ряду, ${rows} рядов)<br>
-                <strong>Ориентация:</strong> ${orientation === 'width' ? 'Ширина модуля вдоль ширины помещения' : 'Модуль повернут на 90°'}<br>
-                <strong>Размер секции:</strong> ${sectionWidth}м × ${sectionLength}м<br>
-                <strong>Примечание:</strong> Секции, выходящие за границы, будут обрезаны при монтаже
+                <strong>Схема укладки:</strong> ${roomResult.sectionsPerRow} × ${roomResult.rows} (${roomResult.sectionsPerRow} секций в каждом ряду, ${roomResult.rows} рядов)<br>
+                <strong>Ориентация:</strong> ${roomResult.orientation === 'width' ? 'Ширина модуля вдоль ширины помещения' : 'Модуль повернут на 90°'}<br>
+                <strong>Размер секции:</strong> ${roomResult.model.width}м × ${roomResult.model.length}м<br>
+                <strong>Примечание:</strong> Секции с пунктирной границей обрезаны по длине
             `;
             container.appendChild(layoutInfo);
         }
@@ -921,7 +941,7 @@
                                     <div class="result-item"><strong>Мощность секции:</strong> ${room.model.power} Вт</div>
                                     <div class="result-item"><strong>Секций требуется:</strong> ${room.sectionsNeeded} шт.</div>
                                     <div class="result-item"><strong>Покрываемая площадь:</strong> ${room.coverage.toFixed(2)} м²</div>
-                                    <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower} Вт</div>
+                                    <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower.toFixed(0)} Вт</div>
                                     <div class="result-item"><strong>Размер секции:</strong> ${room.model.width}м × ${room.model.length}м</div>
                                     <div class="result-item"><strong>Ориентация:</strong> ${room.orientation === 'width' ? 'По ширине' : 'По длине'}</div>
                                     <div class="result-item"><strong>Схема укладки:</strong> ${room.sectionsPerRow} × ${room.rows}</div>
@@ -947,7 +967,7 @@
                         <table class="summary-table">
                             <tr><th>Общая площадь помещений</th><td>${totalArea.toFixed(2)} м²</td></tr>
                             <tr><th>Общая площадь укладки</th><td>${totalCoverage.toFixed(2)} м²</td></tr>
-                            <tr><th>Общая мощность системы</th><td>${totalPower} Вт</td></tr>
+                            <tr><th>Общая мощность системы</th><td>${totalPower.toFixed(0)} Вт</td></tr>
                             <tr><th>Количество терморегуляторов</th><td>${totalThermostats} шт.</td></tr>
                             <tr><th>Общая стоимость</th><td>${totalCost.toLocaleString('ru-RU')} руб.</td></tr>
                         </table>
@@ -1030,7 +1050,7 @@
                 yPosition += 5;
                 doc.text(`Покрываемая площадь: ${room.coverage.toFixed(2)} м² (${room.coveragePercentage.toFixed(1)}%)`, 14, yPosition);
                 yPosition += 5;
-                doc.text(`Мощность: ${room.totalPower} Вт`, 14, yPosition);
+                doc.text(`Мощность: ${room.totalPower.toFixed(0)} Вт`, 14, yPosition);
                 yPosition += 5;
                 doc.text(`Ориентация: ${room.orientation === 'width' ? 'По ширине' : 'По длине'}`, 14, yPosition);
                 yPosition += 5;
@@ -1073,7 +1093,7 @@
             yPosition += 5;
             doc.text(`Общая площадь укладки: ${totalCoverage.toFixed(2)} м²`, 14, yPosition);
             yPosition += 5;
-            doc.text(`Общая мощность системы: ${totalPower} Вт`, 14, yPosition);
+            doc.text(`Общая мощность системы: ${totalPower.toFixed(0)} Вт`, 14, yPosition);
             yPosition += 5;
             doc.text(`Количество терморегуляторов: ${totalThermostats} шт.`, 14, yPosition);
             yPosition += 5;
