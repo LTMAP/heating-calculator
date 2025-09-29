@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калькулятор теплого пола - Многокомнатный расчет</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -207,6 +209,24 @@
         
         .calculate-btn:hover {
             background: #2980b9;
+        }
+        
+        .download-btn {
+            width: 100%;
+            padding: 15px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+            margin: 20px 0;
+        }
+        
+        .download-btn:hover {
+            background: #219653;
         }
         
         .results-container {
@@ -475,6 +495,8 @@
             <div class="results-container" id="results-container">
                 <!-- Результаты появятся здесь -->
             </div>
+
+            <button class="download-btn" id="download-pdf-btn" style="display: none;">Скачать расчет (PDF)</button>
         </div>
         
         <footer>
@@ -510,6 +532,7 @@
             setupOptionSelection('insulation-options');
             document.getElementById('add-room-btn').addEventListener('click', addRoom);
             document.getElementById('calculate-btn').addEventListener('click', calculateAllRooms);
+            document.getElementById('download-pdf-btn').addEventListener('click', downloadPDF);
             addRoom();
         });
 
@@ -617,7 +640,7 @@
             return selected ? selected.getAttribute('data-value') : null;
         }
 
-        // Упрощенный расчет - гарантированно найдет решение для любой площади
+        // Новый алгоритм расчета с ориентацией по ширине помещения
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
             const targetArea = totalArea * 0.9;
@@ -630,21 +653,30 @@
                 if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
                 if (insulation === 'high' && model.powerM2 >= 140 && model.powerM2 <= 180) return true;
                 return false;
-            }).sort((a, b) => b.powerM2 - a.powerM2);
+            });
 
             let bestModel = null;
             let bestSections = 0;
             let bestCoverage = 0;
             let bestDeviation = Infinity;
+            let bestOrientation = 'width'; // 'width' или 'length'
 
-            // Простой алгоритм - берем первую подходящую модель и подбираем количество секций
             for (const model of suitableModels) {
-                // Рассчитываем минимальное и максимальное количество секций
-                const minSections = Math.max(1, Math.ceil(minArea / model.area));
-                const maxSections = Math.max(minSections, Math.floor(maxArea / model.area));
-                
-                // Перебираем количество секций
-                for (let sections = minSections; sections <= maxSections; sections++) {
+                // Определяем, какая ориентация лучше - по ширине или по длине
+                const orientations = [
+                    { type: 'width', sectionWidth: model.width, sectionLength: model.length },
+                    { type: 'length', sectionWidth: model.length, sectionLength: model.width }
+                ];
+
+                for (const orientation of orientations) {
+                    // Проверяем, помещается ли секция по ширине
+                    if (orientation.sectionWidth > width) continue;
+
+                    // Рассчитываем количество секций в ряду и количество рядов
+                    const sectionsInRow = Math.floor(width / orientation.sectionWidth);
+                    const rows = Math.ceil(targetArea / (sectionsInRow * model.area));
+                    
+                    const sections = sectionsInRow * rows;
                     const coverage = sections * model.area;
                     const totalPower = sections * model.power;
                     
@@ -652,8 +684,7 @@
                     if (totalPower > MAX_POWER_PER_CIRCUIT) continue;
                     
                     // Проверяем, что маты физически помещаются в комнату
-                    const minRoomDimension = Math.min(length, width);
-                    if (model.width > minRoomDimension && model.length > minRoomDimension) continue;
+                    if (rows * orientation.sectionLength > length) continue;
                     
                     const coveragePct = (coverage / totalArea) * 100;
                     const deviation = Math.abs(coveragePct - 90);
@@ -663,11 +694,9 @@
                         bestModel = model;
                         bestSections = sections;
                         bestCoverage = coverage;
+                        bestOrientation = orientation.type;
                     }
                 }
-                
-                // Если нашли подходящий вариант - выходим
-                if (bestModel) break;
             }
 
             if (bestModel) {
@@ -697,6 +726,7 @@
                     installPrice,
                     floorPrice,
                     totalCost,
+                    orientation: bestOrientation,
                     success: true
                 };
             }
@@ -704,7 +734,7 @@
             return { roomId, roomName, length, width, totalArea, success: false };
         }
 
-        // Простая визуализация - укладка рядами как плитка
+        // Визуализация с учетом ориентации
         function visualizeLayout(roomResult, containerId) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -718,6 +748,7 @@
             const roomWidth = roomResult.width;
             const model = roomResult.model;
             const totalSections = roomResult.sectionsNeeded;
+            const orientation = roomResult.orientation;
 
             // Масштабирование
             const maxWidth = 400;
@@ -736,56 +767,33 @@
             roomElement.style.transform = 'translate(-50%, -50%)';
             container.appendChild(roomElement);
 
-            // Простая укладка рядами
-            // Пробуем обе ориентации и выбираем лучшую
-            let bestOrientation = null;
-            let bestRows = 0;
-            let bestCols = 0;
-            let bestRemaining = Infinity;
-
-            // Ориентация 1: длина мата вдоль длины комнаты
-            const cols1 = Math.floor(roomLength / model.length);
-            const rows1 = Math.ceil(totalSections / cols1);
-            const remaining1 = rows1 * cols1 - totalSections;
-
-            // Ориентация 2: длина мата вдоль ширины комнаты (поворот на 90°)
-            const cols2 = Math.floor(roomLength / model.width);
-            const rows2 = Math.ceil(totalSections / cols2);
-            const remaining2 = rows2 * cols2 - totalSections;
-
-            // Выбираем ориентацию с меньшими остатками
-            if (remaining1 <= remaining2 && cols1 > 0) {
-                bestOrientation = 'alongLength';
-                bestRows = rows1;
-                bestCols = cols1;
-            } else if (cols2 > 0) {
-                bestOrientation = 'rotated';
-                bestRows = rows2;
-                bestCols = cols2;
+            // Определяем размеры секции в зависимости от ориентации
+            let sectionWidth, sectionLength;
+            if (orientation === 'width') {
+                sectionWidth = model.width;
+                sectionLength = model.length;
             } else {
-                // Если ни одна ориентация не подходит, используем первую
-                bestOrientation = 'alongLength';
-                bestRows = rows1;
-                bestCols = cols1;
+                sectionWidth = model.length;
+                sectionLength = model.width;
             }
 
-            // Размеры секции в выбранной ориентации
-            const sectionWidth = bestOrientation === 'alongLength' ? model.length : model.width;
-            const sectionHeight = bestOrientation === 'alongLength' ? model.width : model.length;
+            // Рассчитываем количество секций в ряду и количество рядов
+            const sectionsInRow = Math.floor(roomWidth / sectionWidth);
+            const rows = Math.ceil(totalSections / sectionsInRow);
 
             // Рисуем секции
             let sectionCount = 0;
-            for (let row = 0; row < bestRows; row++) {
-                for (let col = 0; col < bestCols; col++) {
+            for (let row = 0; row < rows; row++) {
+                for (let col = 0; col < sectionsInRow; col++) {
                     if (sectionCount >= totalSections) break;
                     
                     const sectionElement = document.createElement('div');
                     sectionElement.className = 'section';
                     sectionElement.style.width = `${sectionWidth * scale}px`;
-                    sectionElement.style.height = `${sectionHeight * scale}px`;
+                    sectionElement.style.height = `${sectionLength * scale}px`;
                     sectionElement.style.left = `${col * sectionWidth * scale}px`;
-                    sectionElement.style.top = `${row * sectionHeight * scale}px`;
-                    sectionElement.title = `${model.name} (${model.width}м × ${model.length}м)`;
+                    sectionElement.style.top = `${row * sectionLength * scale}px`;
+                    sectionElement.title = `${model.name} (${sectionWidth}м × ${sectionLength}м)`;
                     
                     // Номер секции
                     const sectionNumber = document.createElement('div');
@@ -802,9 +810,9 @@
             const layoutInfo = document.createElement('div');
             layoutInfo.className = 'layout-info';
             layoutInfo.innerHTML = `
-                <strong>Схема укладки:</strong> ${bestCols} × ${bestRows} (${bestCols} секций в ряду, ${bestRows} рядов)<br>
-                <strong>Ориентация:</strong> ${bestOrientation === 'alongLength' ? 'Длина модуля вдоль длины помещения' : 'Модуль повернут на 90°'}<br>
-                <strong>Размер секции:</strong> ${sectionWidth}м × ${sectionHeight}м
+                <strong>Схема укладки:</strong> ${sectionsInRow} × ${rows} (${sectionsInRow} секций в ряду, ${rows} рядов)<br>
+                <strong>Ориентация:</strong> ${orientation === 'width' ? 'Ширина модуля вдоль ширины помещения' : 'Модуль повернут на 90°'}<br>
+                <strong>Размер секции:</strong> ${sectionWidth}м × ${sectionLength}м
             `;
             container.appendChild(layoutInfo);
         }
@@ -889,6 +897,7 @@
                                     <div class="result-item"><strong>Покрываемая площадь:</strong> ${room.coverage.toFixed(2)} м²</div>
                                     <div class="result-item"><strong>Общая мощность:</strong> ${room.totalPower} Вт</div>
                                     <div class="result-item"><strong>Размер секции:</strong> ${room.model.width}м × ${room.model.length}м</div>
+                                    <div class="result-item"><strong>Ориентация:</strong> ${room.orientation === 'width' ? 'По ширине' : 'По длине'}</div>
                                 </div>
                                 ${room.totalPower > 2500 ? 
                                     `<div class="power-warning">Внимание: Мощность близка к предельной. Убедитесь в надежности электропроводки.</div>` : ''
@@ -919,6 +928,9 @@
                         </table>
                     </div>
                 `;
+                
+                // Показываем кнопку скачивания PDF
+                document.getElementById('download-pdf-btn').style.display = 'block';
             }
 
             container.innerHTML = html;
@@ -936,6 +948,122 @@
         function showError(message) {
             const container = document.getElementById('results-container');
             container.innerHTML = `<div class="warning">${message}</div>`;
+        }
+
+        // Функция для создания PDF
+        function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Заголовок
+            doc.setFontSize(20);
+            doc.text('Коммерческое предложение', 105, 15, { align: 'center' });
+            doc.setFontSize(12);
+            doc.text('Расчет системы теплого пола', 105, 22, { align: 'center' });
+            
+            let yPosition = 35;
+            
+            // Общая информация
+            doc.setFontSize(14);
+            doc.text('Общая информация', 14, yPosition);
+            yPosition += 10;
+            
+            const insulation = getSelectedInsulation();
+            let insulationText = '';
+            if (insulation === 'low') insulationText = 'Низкое утепление (балкон, лоджия, старый дом)';
+            else if (insulation === 'medium') insulationText = 'Среднее утепление (городская квартира)';
+            else if (insulation === 'high') insulationText = 'Высокое утепление (новостройка, утепленный дом)';
+            
+            doc.setFontSize(10);
+            doc.text(`Уровень утепления: ${insulationText}`, 14, yPosition);
+            yPosition += 7;
+            doc.text(`Количество помещений: ${roomsData.filter(r => r.success).length}`, 14, yPosition);
+            yPosition += 10;
+            
+            // Данные по помещениям
+            roomsData.forEach((room, index) => {
+                if (!room.success) return;
+                
+                // Проверяем, нужно ли добавить новую страницу
+                if (yPosition > 250) {
+                    doc.addPage();
+                    yPosition = 20;
+                }
+                
+                doc.setFontSize(12);
+                doc.text(`Помещение: ${room.roomName}`, 14, yPosition);
+                yPosition += 7;
+                
+                doc.setFontSize(10);
+                doc.text(`Размеры: ${room.length}м × ${room.width}м`, 14, yPosition);
+                yPosition += 5;
+                doc.text(`Общая площадь: ${room.totalArea.toFixed(2)} м²`, 14, yPosition);
+                yPosition += 5;
+                doc.text(`Модель: ${room.model.name}`, 14, yPosition);
+                yPosition += 5;
+                doc.text(`Количество секций: ${room.sectionsNeeded} шт.`, 14, yPosition);
+                yPosition += 5;
+                doc.text(`Покрываемая площадь: ${room.coverage.toFixed(2)} м² (${room.coveragePercentage.toFixed(1)}%)`, 14, yPosition);
+                yPosition += 5;
+                doc.text(`Мощность: ${room.totalPower} Вт`, 14, yPosition);
+                yPosition += 5;
+                doc.text(`Ориентация: ${room.orientation === 'width' ? 'По ширине' : 'По длине'}`, 14, yPosition);
+                yPosition += 5;
+                
+                // Стоимость
+                doc.text(`Стоимость материалов: ${room.floorPrice.toLocaleString('ru-RU')} руб.`, 14, yPosition);
+                yPosition += 5;
+                doc.text(`Стоимость монтажа: ${room.installPrice.toLocaleString('ru-RU')} руб.`, 14, yPosition);
+                yPosition += 5;
+                doc.text(`Терморегуляторы: ${room.thermostatCount} шт. × ${room.thermostatPrice.toLocaleString('ru-RU')} руб. = ${room.thermostatTotal.toLocaleString('ru-RU')} руб.`, 14, yPosition);
+                yPosition += 5;
+                doc.setFont(undefined, 'bold');
+                doc.text(`ИТОГО по помещению: ${room.totalCost.toLocaleString('ru-RU')} руб.`, 14, yPosition);
+                doc.setFont(undefined, 'normal');
+                yPosition += 10;
+            });
+            
+            // Общий итог
+            if (yPosition > 220) {
+                doc.addPage();
+                yPosition = 20;
+            }
+            
+            const totalArea = roomsData.filter(r => r.success).reduce((sum, room) => sum + room.totalArea, 0);
+            const totalCoverage = roomsData.filter(r => r.success).reduce((sum, room) => sum + room.coverage, 0);
+            const totalPower = roomsData.filter(r => r.success).reduce((sum, room) => sum + room.totalPower, 0);
+            const totalCost = roomsData.filter(r => r.success).reduce((sum, room) => sum + room.totalCost, 0);
+            const totalThermostats = roomsData.filter(r => r.success).reduce((sum, room) => sum + room.thermostatCount, 0);
+            
+            doc.setFontSize(14);
+            doc.text('ОБЩИЙ ИТОГ', 14, yPosition);
+            yPosition += 10;
+            
+            doc.setFontSize(10);
+            doc.text(`Общая площадь помещений: ${totalArea.toFixed(2)} м²`, 14, yPosition);
+            yPosition += 5;
+            doc.text(`Общая площадь укладки: ${totalCoverage.toFixed(2)} м²`, 14, yPosition);
+            yPosition += 5;
+            doc.text(`Общая мощность системы: ${totalPower} Вт`, 14, yPosition);
+            yPosition += 5;
+            doc.text(`Количество терморегуляторов: ${totalThermostats} шт.`, 14, yPosition);
+            yPosition += 5;
+            doc.setFont(undefined, 'bold');
+            doc.text(`ОБЩАЯ СТОИМОСТЬ: ${totalCost.toLocaleString('ru-RU')} руб.`, 14, yPosition);
+            yPosition += 10;
+            
+            // Примечания
+            doc.setFont(undefined, 'normal');
+            doc.text('Примечание: Расчет является предварительным. Для точного подбора обратитесь к специалисту.', 14, yPosition);
+            yPosition += 7;
+            doc.text('Срок выполнения работ: 5-10 рабочих дней', 14, yPosition);
+            yPosition += 7;
+            doc.text('Гарантия на оборудование: 5 лет', 14, yPosition);
+            yPosition += 7;
+            doc.text('Гарантия на монтажные работы: 2 года', 14, yPosition);
+            
+            // Сохраняем PDF
+            doc.save('Расчет_теплого_пола.pdf');
         }
     </script>
 </body>
