@@ -641,86 +641,170 @@
             return selected ? selected.getAttribute('data-value') : null;
         }
 
-        // Улучшенный алгоритм расчета с одинаковым количеством секций в каждой линии
+        // УЛУЧШЕННЫЙ алгоритм расчета - гарантированно найдет решение
         function calculateRoom(roomId, roomName, length, width, insulation) {
             const totalArea = length * width;
             const targetArea = totalArea * 0.9;
-            const minArea = totalArea * 0.85;
-            const maxArea = totalArea * 1.00;
+            
+            // Получаем рекомендуемый диапазон мощности в зависимости от утепления
+            let minPower, maxPower;
+            switch(insulation) {
+                case 'low':
+                    minPower = 200;
+                    maxPower = 500; // Верхняя граница расширена
+                    break;
+                case 'medium':
+                    minPower = 180;
+                    maxPower = 220;
+                    break;
+                case 'high':
+                    minPower = 140;
+                    maxPower = 180;
+                    break;
+                default:
+                    minPower = 140;
+                    maxPower = 220;
+            }
 
-            // Фильтр моделей по утеплению
-            const suitableModels = models.filter(model => {
-                if (insulation === 'low' && model.powerM2 >= 200) return true;
-                if (insulation === 'medium' && model.powerM2 >= 180 && model.powerM2 <= 200) return true;
-                if (insulation === 'high' && model.powerM2 >= 140 && model.powerM2 <= 180) return true;
-                return false;
-            });
+            // Сначала ищем модели, точно соответствующие требованиям по мощности
+            let suitableModels = models.filter(model => 
+                model.powerM2 >= minPower && model.powerM2 <= maxPower
+            );
 
-            let bestModel = null;
-            let bestSections = 0;
-            let bestCoverage = 0;
-            let bestDeviation = Infinity;
-            let bestOrientation = 'width'; // 'width' или 'length'
-            let bestSectionsPerRow = 0;
-            let bestRows = 0;
+            // Если не нашли подходящих по мощности, расширяем критерии
+            if (suitableModels.length === 0) {
+                suitableModels = models.filter(model => 
+                    model.powerM2 >= minPower * 0.9 || model.powerM2 <= maxPower * 1.1
+                );
+            }
 
+            // Если все еще не нашли, берем все модели и сортируем по близости к целевому диапазону
+            if (suitableModels.length === 0) {
+                suitableModels = [...models].sort((a, b) => {
+                    const aDiff = Math.min(Math.abs(a.powerM2 - minPower), Math.abs(a.powerM2 - maxPower));
+                    const bDiff = Math.min(Math.abs(b.powerM2 - minPower), Math.abs(b.powerM2 - maxPower));
+                    return aDiff - bDiff;
+                });
+            }
+
+            let bestSolution = null;
+            let bestScore = -Infinity;
+
+            // Перебираем все подходящие модели и ориентации
             for (const model of suitableModels) {
-                // Определяем, какая ориентация лучше - по ширине или по длине
+                // Пробуем обе ориентации
                 const orientations = [
                     { type: 'width', sectionWidth: model.width, sectionLength: model.length },
                     { type: 'length', sectionWidth: model.length, sectionLength: model.width }
                 ];
 
                 for (const orientation of orientations) {
-                    // Проверяем, помещается ли секция по ширине
+                    // Пропускаем, если секция не помещается по ширине
                     if (orientation.sectionWidth > width) continue;
 
                     // Рассчитываем максимальное количество секций в ряду
                     const maxSectionsInRow = Math.floor(width / orientation.sectionWidth);
                     
-                    // Перебираем возможное количество секций в ряду (от 1 до максимума)
+                    // Перебираем возможное количество секций в ряду
                     for (let sectionsInRow = 1; sectionsInRow <= maxSectionsInRow; sectionsInRow++) {
-                        // Рассчитываем количество рядов для достижения целевой площади
-                        const requiredArea = targetArea;
-                        const sectionsPerRowArea = sectionsInRow * model.area;
-                        const rows = Math.ceil(requiredArea / sectionsPerRowArea);
+                        // Рассчитываем необходимое количество рядов для достижения целевой площади
+                        const areaPerRow = sectionsInRow * model.area;
+                        const rowsNeeded = Math.ceil(targetArea / areaPerRow);
                         
                         // Проверяем, что ряды помещаются по длине
-                        if (rows * orientation.sectionLength > length) continue;
+                        if (rowsNeeded * orientation.sectionLength > length) continue;
                         
-                        const sections = sectionsInRow * rows;
-                        const coverage = sections * model.area;
-                        const totalPower = sections * model.power;
+                        const totalSections = sectionsInRow * rowsNeeded;
+                        const coverage = totalSections * model.area;
+                        const totalPower = totalSections * model.power;
                         
-                        // Проверяем мощность
+                        // Проверяем ограничение по мощности
                         if (totalPower > MAX_POWER_PER_CIRCUIT) continue;
                         
-                        // Проверяем, что покрытие в пределах допустимого
-                        if (coverage < minArea || coverage > maxArea) continue;
+                        // Рассчитываем процент покрытия
+                        const coveragePercentage = (coverage / totalArea) * 100;
                         
-                        const coveragePct = (coverage / totalArea) * 100;
-                        const deviation = Math.abs(coveragePct - 90);
+                        // Оцениваем решение по нескольким критериям
+                        const coverageScore = 100 - Math.abs(coveragePercentage - 90); // Чем ближе к 90%, тем лучше
+                        const powerScore = model.powerM2 >= minPower && model.powerM2 <= maxPower ? 50 : 0; // Бонус за соответствие мощности
+                        const efficiencyScore = (model.powerM2 / 500) * 20; // Предпочтение более эффективным моделям
                         
-                        if (deviation < bestDeviation) {
-                            bestDeviation = deviation;
-                            bestModel = model;
-                            bestSections = sections;
-                            bestCoverage = coverage;
-                            bestOrientation = orientation.type;
-                            bestSectionsPerRow = sectionsInRow;
-                            bestRows = rows;
+                        const totalScore = coverageScore + powerScore + efficiencyScore;
+                        
+                        if (totalScore > bestScore) {
+                            bestScore = totalScore;
+                            bestSolution = {
+                                model,
+                                sectionsNeeded: totalSections,
+                                coverage,
+                                totalPower,
+                                coveragePercentage,
+                                orientation: orientation.type,
+                                sectionsPerRow: sectionsInRow,
+                                rows: rowsNeeded
+                            };
                         }
                     }
                 }
             }
 
-            if (bestModel) {
-                const totalPower = bestSections * bestModel.power;
-                const thermostatCount = Math.max(1, Math.ceil(bestCoverage / 20));
+            // Если не нашли идеального решения, ищем компромиссное
+            if (!bestSolution) {
+                for (const model of models) {
+                    const orientations = [
+                        { type: 'width', sectionWidth: model.width, sectionLength: model.length },
+                        { type: 'length', sectionWidth: model.length, sectionLength: model.width }
+                    ];
+
+                    for (const orientation of orientations) {
+                        if (orientation.sectionWidth > width) continue;
+
+                        const maxSectionsInRow = Math.floor(width / orientation.sectionWidth);
+                        
+                        for (let sectionsInRow = 1; sectionsInRow <= maxSectionsInRow; sectionsInRow++) {
+                            const maxRows = Math.floor(length / orientation.sectionLength);
+                            const maxSections = sectionsInRow * maxRows;
+                            const coverage = maxSections * model.area;
+                            const totalPower = maxSections * model.power;
+                            
+                            if (totalPower > MAX_POWER_PER_CIRCUIT) continue;
+                            
+                            const coveragePercentage = (coverage / totalArea) * 100;
+                            
+                            // Принимаем решение даже с меньшим покрытием
+                            if (coveragePercentage >= 70) {
+                                const coverageScore = coveragePercentage;
+                                const powerScore = model.powerM2 >= minPower && model.powerM2 <= maxPower ? 30 : 0;
+                                
+                                const totalScore = coverageScore + powerScore;
+                                
+                                if (totalScore > bestScore) {
+                                    bestScore = totalScore;
+                                    bestSolution = {
+                                        model,
+                                        sectionsNeeded: maxSections,
+                                        coverage,
+                                        totalPower,
+                                        coveragePercentage,
+                                        orientation: orientation.type,
+                                        sectionsPerRow: sectionsInRow,
+                                        rows: maxRows
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (bestSolution) {
+                const { model, sectionsNeeded, coverage, totalPower, coveragePercentage, orientation, sectionsPerRow, rows } = bestSolution;
+                
+                const thermostatCount = Math.max(1, Math.ceil(coverage / 20));
                 const thermostatPrice = 5000;
                 const thermostatTotal = thermostatPrice * thermostatCount;
-                const installPrice = bestCoverage * 1000 + thermostatCount * 3000;
-                const floorPrice = bestCoverage * 3000;
+                const installPrice = coverage * 1000 + thermostatCount * 3000;
+                const floorPrice = coverage * 3000;
                 const totalCost = installPrice + floorPrice + thermostatTotal;
                 
                 return {
@@ -729,11 +813,11 @@
                     length,
                     width,
                     totalArea,
-                    model: bestModel,
-                    sectionsNeeded: bestSections,
-                    coverage: bestCoverage,
+                    model,
+                    sectionsNeeded,
+                    coverage,
                     totalPower,
-                    coveragePercentage: (bestCoverage / totalArea) * 100,
+                    coveragePercentage,
                     powerUsage: totalArea * 20,
                     thermostatCount,
                     thermostatPrice,
@@ -741,14 +825,56 @@
                     installPrice,
                     floorPrice,
                     totalCost,
-                    orientation: bestOrientation,
-                    sectionsPerRow: bestSectionsPerRow,
-                    rows: bestRows,
+                    orientation,
+                    sectionsPerRow,
+                    rows,
                     success: true
                 };
             }
 
-            return { roomId, roomName, length, width, totalArea, success: false };
+            // Если все еще не нашли решение, используем самую маленькую модель как запасной вариант
+            const fallbackModel = models.reduce((smallest, model) => 
+                model.area < smallest.area ? model : smallest
+            );
+            
+            const sectionsInRow = Math.floor(width / fallbackModel.width);
+            const rows = Math.floor(length / fallbackModel.length);
+            const sectionsNeeded = sectionsInRow * rows;
+            const coverage = sectionsNeeded * fallbackModel.area;
+            const totalPower = sectionsNeeded * fallbackModel.power;
+            const coveragePercentage = (coverage / totalArea) * 100;
+            
+            const thermostatCount = Math.max(1, Math.ceil(coverage / 20));
+            const thermostatPrice = 5000;
+            const thermostatTotal = thermostatPrice * thermostatCount;
+            const installPrice = coverage * 1000 + thermostatCount * 3000;
+            const floorPrice = coverage * 3000;
+            const totalCost = installPrice + floorPrice + thermostatTotal;
+            
+            return {
+                roomId,
+                roomName,
+                length,
+                width,
+                totalArea,
+                model: fallbackModel,
+                sectionsNeeded,
+                coverage,
+                totalPower,
+                coveragePercentage,
+                powerUsage: totalArea * 20,
+                thermostatCount,
+                thermostatPrice,
+                thermostatTotal,
+                installPrice,
+                floorPrice,
+                totalCost,
+                orientation: 'width',
+                sectionsPerRow,
+                rows,
+                success: true,
+                fallback: true
+            };
         }
 
         // Визуализация с одинаковым количеством секций в каждой линии
@@ -906,12 +1032,16 @@
                 }
                 
                 const visualizationId = `visualization-${index}`;
+                const fallbackWarning = room.fallback ? 
+                    `<div class="power-warning">Внимание: Использована резервная модель. Покрытие может быть меньше оптимального.</div>` : '';
+                
                 html += `
                     <div class="room-result">
                         <div class="room-result-header">${room.roomName} (${room.length}м × ${room.width}м)</div>
                         <div class="room-result-content">
                             <div class="result-card">
                                 <h4>ОПТИМАЛЬНАЯ МОДЕЛЬ: ${room.model.name}</h4>
+                                ${fallbackWarning}
                                 <div class="result-grid">
                                     <div class="result-item"><strong>Мощность на м²:</strong> ${room.model.powerM2} Вт/м²</div>
                                     <div class="result-item"><strong>Мощность секции:</strong> ${room.model.power} Вт</div>
