@@ -167,6 +167,7 @@
             <div class="section-info">
                 <div>Масштаб: <span id="scaleInfo">1:10</span></div>
                 <div>Размер помещения: <span id="sizeInfo">300×400 см</span></div>
+                <div>Отступы: <span id="marginInfo">0×0 см</span></div>
             </div>
         </div>
 
@@ -217,6 +218,8 @@
                 this.roomLength = 400; // см
                 this.scale = 10; // пикселей на см
                 this.sections = [];
+                this.marginX = 0;
+                this.marginY = 0;
                 
                 this.initializeControls();
                 this.calculateLayout();
@@ -261,6 +264,8 @@
             updateSizeInfo() {
                 document.getElementById('sizeInfo').textContent = 
                     `${this.roomWidth}×${this.roomLength} см`;
+                document.getElementById('marginInfo').textContent = 
+                    `${this.marginX.toFixed(1)}×${this.marginY.toFixed(1)} см`;
             }
 
             calculateLayout() {
@@ -294,11 +299,19 @@
 
                 if (bestLayout) {
                     const { orientation, cols, rows } = bestLayout;
+                    
+                    // Вычисляем отступы для центрирования
+                    const totalWidthUsed = cols * orientation.width;
+                    const totalLengthUsed = rows * orientation.length;
+                    
+                    this.marginX = (roomWidthM - totalWidthUsed) / 2 * 100; // в см
+                    this.marginY = (roomLengthM - totalLengthUsed) / 2 * 100; // в см
+
                     for (let row = 0; row < rows; row++) {
                         for (let col = 0; col < cols; col++) {
                             this.sections.push({
-                                x: col * orientation.width * 100, // в см
-                                y: row * orientation.length * 100, // в см
+                                x: this.marginX + col * orientation.width * 100, // в см
+                                y: this.marginY + row * orientation.length * 100, // в см
                                 width: orientation.width * 100,
                                 length: orientation.length * 100,
                                 orientation: orientation.width === section.width ? 'horizontal' : 'vertical'
@@ -367,9 +380,11 @@
                     );
                 });
 
-                // Обновляем информацию о масштабе
+                // Обновляем информацию о масштабе и отступах
                 document.getElementById('scaleInfo').textContent = 
                     `1:${Math.round(100 / this.scale)}`;
+                document.getElementById('marginInfo').textContent = 
+                    `${this.marginX.toFixed(1)}×${this.marginY.toFixed(1)} см`;
             }
         }
 
